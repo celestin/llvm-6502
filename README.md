@@ -14,10 +14,12 @@ A quick way to start (on Linux):
   * Clone this repository
   * Run inside directory:
 
-    mkdir build
-    cd build
-    cmake .. -DLLVM_TARGETS_TO_BUILD:STRING="X86;Mos6502"
-    make -j4
+```bash
+mkdir build
+cd build
+cmake .. -DLLVM_TARGETS_TO_BUILD:STRING="X86;Mos6502"
+make -j4
+```
 
 If you want to build more targets, append them to the `LLVM_TARGETS_TO_BUILD`
 variable.  Adjust `-j` option of `make` in case you have more processor cores.
@@ -34,7 +36,9 @@ Run `make install` as usual.
 
 To run regression tests for the MOS 6502 target, run from `build/`
 
-    make check-llvm-codegen-mos6502
+```bash
+make check-llvm-codegen-mos6502
+```
 
 For more information on the LLVM test suite, refer to the [Testing
 Guide](http://llvm.org/docs/TestingGuide.html).
