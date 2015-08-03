@@ -34,6 +34,7 @@ subdirectories =
  WebAssembly
  X86
  XCore
+ Mos6502
 
 ; This is a special group whose required libraries are extended (by llvm-build)
 ; with the best execution engine (the native JIT, if available, or the
