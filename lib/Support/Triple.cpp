@@ -1229,6 +1229,7 @@ Triple Triple::getBigEndianArchVariant() const {
   case Triple::mipsel:  T.setArch(Triple::mips);       break;
   case Triple::ppc64le: T.setArch(Triple::ppc64);      break;
   case Triple::sparcel: T.setArch(Triple::sparc);      break;
+  case Triple::mos6502: T.setArch(Triple::mos6502);    break;
   }
   return T;
 }
