@@ -77,7 +77,7 @@ class Mos6502AsmParser : public MCTargetAsmParser {
   bool parseDirectiveWord(unsigned Size, SMLoc L);
 
   bool is64Bit() const {
-    return STI.getTargetTriple().getArchName().startswith("mos6502v9");
+    return false;
   }
 
   void expandSET(MCInst &Inst, SMLoc IDLoc,
@@ -1026,9 +1026,7 @@ bool Mos6502AsmParser::matchMos6502AsmModifiers(const MCExpr *&EVal,
 }
 
 extern "C" void LLVMInitializeMos6502AsmParser() {
-  RegisterMCAsmParser<Mos6502AsmParser> A(TheMos6502Target);
-  RegisterMCAsmParser<Mos6502AsmParser> B(TheMos6502V9Target);
-  RegisterMCAsmParser<Mos6502AsmParser> C(TheMos6502elTarget);
+  RegisterMCAsmParser<Mos6502AsmParser> C(TheMos6502Target);
 }
 
 #define GET_REGISTER_MATCHER

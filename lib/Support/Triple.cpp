@@ -42,8 +42,6 @@ const char *Triple::getArchTypeName(ArchType Kind) {
   case sparcv9:     return "sparcv9";
   case sparcel:     return "sparcel";
   case mos6502:     return "mos6502";
-  case mos6502v9:   return "mos6502v9";
-  case mos6502el:   return "mos6502el";
   case systemz:     return "s390x";
   case tce:         return "tce";
   case thumb:       return "thumb";
@@ -104,9 +102,7 @@ const char *Triple::getArchTypePrefix(ArchType Kind) {
   case sparcel:
   case sparc:       return "sparc";
 
-  case mos6502v9:
-  case mos6502el:
-  case mos6502:       return "mos6502";
+  case mos6502:     return "mos6502";
 
   case systemz:     return "s390";
 
@@ -249,8 +245,6 @@ Triple::ArchType Triple::getArchTypeForLLVMName(StringRef Name) {
     .Case("sparcel", sparcel)
     .Case("sparcv9", sparcv9)
     .Case("mos6502", mos6502)
-    .Case("mos6502el", mos6502el)
-    .Case("mos6502v9", mos6502v9)
     .Case("systemz", systemz)
     .Case("tce", tce)
     .Case("thumb", thumb)
@@ -364,8 +358,6 @@ static Triple::ArchType parseArch(StringRef ArchName) {
     .Case("sparcel", Triple::sparcel)
     .Cases("sparcv9", "sparc64", Triple::sparcv9)
     .Case("mos6502", Triple::mos6502)
-    .Case("mos6502el", Triple::mos6502el)
-    .Cases("mos6502v9", "mos650264", Triple::mos6502v9)
     .Case("tce", Triple::tce)
     .Case("xcore", Triple::xcore)
     .Case("nvptx", Triple::nvptx)
@@ -540,8 +532,6 @@ static Triple::ObjectFormatType getDefaultFormat(const Triple &T) {
   case Triple::amdgcn:
   case Triple::sparc:
   case Triple::sparcv9:
-  case Triple::mos6502:
-  case Triple::mos6502v9:
   case Triple::systemz:
   case Triple::xcore:
   case Triple::ppc64le:
@@ -1025,7 +1015,6 @@ static unsigned getArchPointerBitWidth(llvm::Triple::ArchType Arch) {
   case llvm::Triple::sparc:
   case llvm::Triple::sparcel:
   case llvm::Triple::mos6502:
-  case llvm::Triple::mos6502el:
   case llvm::Triple::tce:
   case llvm::Triple::thumb:
   case llvm::Triple::thumbeb:
@@ -1051,7 +1040,6 @@ static unsigned getArchPointerBitWidth(llvm::Triple::ArchType Arch) {
   case llvm::Triple::ppc64:
   case llvm::Triple::ppc64le:
   case llvm::Triple::sparcv9:
-  case llvm::Triple::mos6502v9:
   case llvm::Triple::systemz:
   case llvm::Triple::x86_64:
   case llvm::Triple::amdil64:
@@ -1106,7 +1094,6 @@ Triple Triple::get32BitArchVariant() const {
   case Triple::sparc:
   case Triple::sparcel:
   case Triple::mos6502:
-  case Triple::mos6502el:
   case Triple::tce:
   case Triple::thumb:
   case Triple::thumbeb:
@@ -1123,7 +1110,6 @@ Triple Triple::get32BitArchVariant() const {
   case Triple::nvptx64:   T.setArch(Triple::nvptx);   break;
   case Triple::ppc64:     T.setArch(Triple::ppc);     break;
   case Triple::sparcv9:   T.setArch(Triple::sparc);   break;
-  case Triple::mos6502v9: T.setArch(Triple::mos6502); break;
   case Triple::x86_64:    T.setArch(Triple::x86);     break;
   case Triple::amdil64:   T.setArch(Triple::amdil);   break;
   case Triple::hsail64:   T.setArch(Triple::hsail);   break;
@@ -1148,7 +1134,7 @@ Triple Triple::get64BitArchVariant() const {
   case Triple::thumbeb:
   case Triple::xcore:
   case Triple::sparcel:
-  case Triple::mos6502el:
+  case Triple::mos6502:
   case Triple::shave:
     T.setArch(UnknownArch);
     break;
@@ -1168,7 +1154,6 @@ Triple Triple::get64BitArchVariant() const {
   case Triple::ppc64:
   case Triple::ppc64le:
   case Triple::sparcv9:
-  case Triple::mos6502v9:
   case Triple::systemz:
   case Triple::x86_64:
   case Triple::wasm64:
@@ -1181,7 +1166,6 @@ Triple Triple::get64BitArchVariant() const {
   case Triple::nvptx:   T.setArch(Triple::nvptx64);   break;
   case Triple::ppc:     T.setArch(Triple::ppc64);     break;
   case Triple::sparc:   T.setArch(Triple::sparcv9);   break;
-  case Triple::mos6502: T.setArch(Triple::mos6502v9); break;
   case Triple::x86:     T.setArch(Triple::x86_64);    break;
   case Triple::amdil:   T.setArch(Triple::amdil64);   break;
   case Triple::hsail:   T.setArch(Triple::hsail64);   break;
@@ -1233,8 +1217,6 @@ Triple Triple::getBigEndianArchVariant() const {
   case Triple::ppc:
   case Triple::sparc:
   case Triple::sparcv9:
-  case Triple::mos6502:
-  case Triple::mos6502v9:
   case Triple::systemz:
   case Triple::tce:
   case Triple::thumbeb:
@@ -1247,7 +1229,6 @@ Triple Triple::getBigEndianArchVariant() const {
   case Triple::mipsel:  T.setArch(Triple::mips);       break;
   case Triple::ppc64le: T.setArch(Triple::ppc64);      break;
   case Triple::sparcel: T.setArch(Triple::sparc);      break;
-  case Triple::mos6502el: T.setArch(Triple::mos6502);  break;
   }
   return T;
 }
@@ -1258,7 +1239,6 @@ Triple Triple::getLittleEndianArchVariant() const {
   case Triple::UnknownArch:
   case Triple::ppc:
   case Triple::sparcv9:
-  case Triple::mos6502v9:
   case Triple::systemz:
   case Triple::tce:
 
@@ -1290,7 +1270,7 @@ Triple Triple::getLittleEndianArchVariant() const {
   case Triple::r600:
   case Triple::shave:
   case Triple::sparcel:
-  case Triple::mos6502el:
+  case Triple::mos6502:
   case Triple::spir64:
   case Triple::spir:
   case Triple::thumb:
@@ -1308,7 +1288,6 @@ Triple Triple::getLittleEndianArchVariant() const {
   case Triple::mips:       T.setArch(Triple::mipsel);   break;
   case Triple::ppc64:      T.setArch(Triple::ppc64le);  break;
   case Triple::sparc:      T.setArch(Triple::sparcel);  break;
-  case Triple::mos6502:    T.setArch(Triple::mos6502el);  break;
   }
   return T;
 }

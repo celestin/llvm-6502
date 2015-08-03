@@ -21,8 +21,8 @@ using namespace llvm;
 void Mos6502ELFMCAsmInfo::anchor() {}
 
 Mos6502ELFMCAsmInfo::Mos6502ELFMCAsmInfo(const Triple &TheTriple) {
-  bool isV9 = (TheTriple.getArch() == Triple::mos6502v9);
-  IsLittleEndian = (TheTriple.getArch() == Triple::mos6502el);
+  bool isV9 = false;
+  IsLittleEndian = true;
 
   if (isV9) {
     PointerSize = CalleeSaveStackSlotSize = 8;

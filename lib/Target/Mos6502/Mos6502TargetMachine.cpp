@@ -16,38 +16,27 @@
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/Support/TargetRegistry.h"
+
 using namespace llvm;
 
 extern "C" void LLVMInitializeMos6502Target() {
   // Register the target.
-  RegisterTargetMachine<Mos6502V8TargetMachine> X(TheMos6502Target);
-  RegisterTargetMachine<Mos6502V9TargetMachine> Y(TheMos6502V9Target);
-  RegisterTargetMachine<Mos6502elTargetMachine> Z(TheMos6502elTarget);
+  RegisterTargetMachine<Mos6502TargetMachine> Z(TheMos6502Target);
 }
 
-static std::string computeDataLayout(const Triple &T, bool is64Bit) {
-  // Mos6502 is typically big endian, but some are little.
-  std::string Ret = T.getArch() == Triple::mos6502el ? "e" : "E";
+static std::string computeDataLayout(const Triple &T) {
+  std::string Ret = "e";
   Ret += "-m:e";
-
-  // Some ABIs have 32bit pointers.
-  if (!is64Bit)
-    Ret += "-p:32:32";
+  Ret += "-p:32:32";
 
   // Alignments for 64 bit integers.
   Ret += "-i64:64";
 
   // On Mos6502V9 128 floats are aligned to 128 bits, on others only to 64.
   // On Mos6502V9 registers can hold 64 or 32 bits, on others only 32.
-  if (is64Bit)
-    Ret += "-n32:64";
-  else
-    Ret += "-f128:64-n32";
+  Ret += "-f128:64-n32";
 
-  if (is64Bit)
-    Ret += "-S128";
-  else
-    Ret += "-S64";
+  Ret += "-S64";
 
   return Ret;
 }
@@ -58,11 +47,11 @@ Mos6502TargetMachine::Mos6502TargetMachine(const Target &T, const Triple &TT,
                                        StringRef CPU, StringRef FS,
                                        const TargetOptions &Options,
                                        Reloc::Model RM, CodeModel::Model CM,
-                                       CodeGenOpt::Level OL, bool is64bit)
-    : LLVMTargetMachine(T, computeDataLayout(TT, is64bit), TT, CPU, FS, Options,
+                                       CodeGenOpt::Level OL)
+    : LLVMTargetMachine(T, computeDataLayout(TT), TT, CPU, FS, Options,
                         RM, CM, OL),
       TLOF(make_unique<Mos6502ELFTargetObjectFile>()),
-      Subtarget(TT, CPU, FS, *this, is64bit) {
+      Subtarget(TT, CPU, FS, *this, false) {
   initAsmInfo();
 }
 
@@ -103,30 +92,3 @@ bool Mos6502PassConfig::addInstSelector() {
 void Mos6502PassConfig::addPreEmitPass(){
   addPass(createMos6502DelaySlotFillerPass(getMos6502TargetMachine()));
 }
-
-void Mos6502V8TargetMachine::anchor() { }
-
-Mos6502V8TargetMachine::Mos6502V8TargetMachine(const Target &T, const Triple &TT,
-                                           StringRef CPU, StringRef FS,
-                                           const TargetOptions &Options,
-                                           Reloc::Model RM, CodeModel::Model CM,
-                                           CodeGenOpt::Level OL)
-    : Mos6502TargetMachine(T, TT, CPU, FS, Options, RM, CM, OL, false) {}
-
-void Mos6502V9TargetMachine::anchor() { }
-
-Mos6502V9TargetMachine::Mos6502V9TargetMachine(const Target &T, const Triple &TT,
-                                           StringRef CPU, StringRef FS,
-                                           const TargetOptions &Options,
-                                           Reloc::Model RM, CodeModel::Model CM,
-                                           CodeGenOpt::Level OL)
-    : Mos6502TargetMachine(T, TT, CPU, FS, Options, RM, CM, OL, true) {}
-
-void Mos6502elTargetMachine::anchor() {}
-
-Mos6502elTargetMachine::Mos6502elTargetMachine(const Target &T, const Triple &TT,
-                                           StringRef CPU, StringRef FS,
-                                           const TargetOptions &Options,
-                                           Reloc::Model RM, CodeModel::Model CM,
-                                           CodeGenOpt::Level OL)
-    : Mos6502TargetMachine(T, TT, CPU, FS, Options, RM, CM, OL, false) {}

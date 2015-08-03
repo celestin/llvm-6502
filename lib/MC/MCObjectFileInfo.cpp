@@ -348,7 +348,6 @@ void MCObjectFileInfo::initELFMCObjectFileInfo(Triple T) {
     break;
   case Triple::sparcel:
   case Triple::sparc:
-  case Triple::mos6502el:
   case Triple::mos6502:
     if (RelocM == Reloc::PIC_) {
       LSDAEncoding = dwarf::DW_EH_PE_pcrel | dwarf::DW_EH_PE_sdata4;
@@ -363,7 +362,6 @@ void MCObjectFileInfo::initELFMCObjectFileInfo(Triple T) {
     }
     break;
   case Triple::sparcv9:
-  case Triple::mos6502v9:
     LSDAEncoding = dwarf::DW_EH_PE_pcrel | dwarf::DW_EH_PE_sdata4;
     if (RelocM == Reloc::PIC_) {
       PersonalityEncoding = dwarf::DW_EH_PE_indirect | dwarf::DW_EH_PE_pcrel |

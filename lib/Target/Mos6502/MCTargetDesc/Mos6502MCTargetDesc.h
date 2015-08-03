@@ -31,8 +31,6 @@ class raw_pwrite_stream;
 class raw_ostream;
 
 extern Target TheMos6502Target;
-extern Target TheMos6502V9Target;
-extern Target TheMos6502elTarget;
 
 MCCodeEmitter *createMos6502MCCodeEmitter(const MCInstrInfo &MCII,
                                         const MCRegisterInfo &MRI,

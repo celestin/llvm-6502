@@ -32,6 +32,7 @@
 #include "llvm/MC/MCSymbol.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/raw_ostream.h"
+
 using namespace llvm;
 
 #define DEBUG_TYPE "asm-printer"
@@ -443,7 +444,5 @@ bool Mos6502AsmPrinter::PrintAsmMemoryOperand(const MachineInstr *MI,
 
 // Force static initialization.
 extern "C" void LLVMInitializeMos6502AsmPrinter() {
-  RegisterAsmPrinter<Mos6502AsmPrinter> X(TheMos6502Target);
-  RegisterAsmPrinter<Mos6502AsmPrinter> Y(TheMos6502V9Target);
-  RegisterAsmPrinter<Mos6502AsmPrinter> Z(TheMos6502elTarget);
+  RegisterAsmPrinter<Mos6502AsmPrinter> Z(TheMos6502Target);
 }

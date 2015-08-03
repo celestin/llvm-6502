@@ -44,7 +44,7 @@ public:
 }
 
 namespace llvm {
-extern Target TheMos6502Target, TheMos6502V9Target, TheMos6502elTarget;
+extern Target TheMos6502Target;
 }
 
 static MCDisassembler *createMos6502Disassembler(const Target &T,
@@ -57,10 +57,6 @@ static MCDisassembler *createMos6502Disassembler(const Target &T,
 extern "C" void LLVMInitializeMos6502Disassembler() {
   // Register the disassembler.
   TargetRegistry::RegisterMCDisassembler(TheMos6502Target,
-                                         createMos6502Disassembler);
-  TargetRegistry::RegisterMCDisassembler(TheMos6502V9Target,
-                                         createMos6502Disassembler);
-  TargetRegistry::RegisterMCDisassembler(TheMos6502elTarget,
                                          createMos6502Disassembler);
 }
 

@@ -67,9 +67,7 @@ public:
     sparc,      // Sparc: sparc
     sparcv9,    // Sparcv9: Sparcv9
     sparcel,    // Sparc: (endianness = little). NB: 'Sparcle' is a CPU variant
-    mos6502,    // Mos6502: mos6502
-    mos6502v9,  // Mos6502v9: Sparcv9
-    mos6502el,  // Mos6502: (endianness = little). NB: 'Mos6502le' is a CPU variant
+    mos6502,    // MOS 6502: mos6502
     systemz,    // SystemZ: s390x
     tce,        // TCE (http://tce.cs.tut.fi/): tce
     thumb,      // Thumb (little endian): thumb, thumbv.*

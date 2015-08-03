@@ -42,15 +42,6 @@ static MCAsmInfo *createMos6502MCAsmInfo(const MCRegisterInfo &MRI,
   return MAI;
 }
 
-static MCAsmInfo *createMos6502V9MCAsmInfo(const MCRegisterInfo &MRI,
-                                         const Triple &TT) {
-  MCAsmInfo *MAI = new Mos6502ELFMCAsmInfo(TT);
-  unsigned Reg = MRI.getDwarfRegNum(SP::O6, true);
-  MCCFIInstruction Inst = MCCFIInstruction::createDefCfa(nullptr, Reg, 2047);
-  MAI->addInitialFrameState(Inst);
-  return MAI;
-}
-
 static MCInstrInfo *createMos6502MCInstrInfo() {
   MCInstrInfo *X = new MCInstrInfo();
   InitMos6502MCInstrInfo(X);
@@ -66,7 +57,7 @@ static MCRegisterInfo *createMos6502MCRegisterInfo(const Triple &TT) {
 static MCSubtargetInfo *
 createMos6502MCSubtargetInfo(const Triple &TT, StringRef CPU, StringRef FS) {
   if (CPU.empty())
-    CPU = (TT.getArch() == Triple::mos6502v9) ? "v9" : "v8";
+    CPU = "v8";
   return createMos6502MCSubtargetInfoImpl(TT, CPU, FS);
 }
 
@@ -99,28 +90,6 @@ static MCCodeGenInfo *createMos6502MCCodeGenInfo(const Triple &TT,
   return X;
 }
 
-static MCCodeGenInfo *createMos6502V9MCCodeGenInfo(const Triple &TT,
-                                                 Reloc::Model RM,
-                                                 CodeModel::Model CM,
-                                                 CodeGenOpt::Level OL) {
-  MCCodeGenInfo *X = new MCCodeGenInfo();
-
-  // The default 64-bit code model is abs44/pic32 and the default 64-bit
-  // code model for JIT is abs64.
-  switch (CM) {
-  default:  break;
-  case CodeModel::Default:
-    CM = RM == Reloc::PIC_ ? CodeModel::Small : CodeModel::Medium;
-    break;
-  case CodeModel::JITDefault:
-    CM = CodeModel::Large;
-    break;
-  }
-
-  X->initMCCodeGenInfo(RM, CM, OL);
-  return X;
-}
-
 static MCTargetStreamer *
 createObjectTargetStreamer(MCStreamer &S, const MCSubtargetInfo &STI) {
   return new Mos6502TargetELFStreamer(S);
@@ -143,11 +112,9 @@ static MCInstPrinter *createMos6502MCInstPrinter(const Triple &T,
 
 extern "C" void LLVMInitializeMos6502TargetMC() {
   // Register the MC asm info.
-  RegisterMCAsmInfoFn X(TheMos6502Target, createMos6502MCAsmInfo);
-  RegisterMCAsmInfoFn Y(TheMos6502V9Target, createMos6502V9MCAsmInfo);
-  RegisterMCAsmInfoFn Z(TheMos6502elTarget, createMos6502MCAsmInfo);
+  RegisterMCAsmInfoFn Z(TheMos6502Target, createMos6502MCAsmInfo);
 
-  for (Target *T : {&TheMos6502Target, &TheMos6502V9Target, &TheMos6502elTarget}) {
+  for (Target *T : {&TheMos6502Target}) {
     // Register the MC instruction info.
     TargetRegistry::RegisterMCInstrInfo(*T, createMos6502MCInstrInfo);
 
@@ -176,9 +143,5 @@ extern "C" void LLVMInitializeMos6502TargetMC() {
 
   // Register the MC codegen info.
   TargetRegistry::RegisterMCCodeGenInfo(TheMos6502Target,
-                                        createMos6502MCCodeGenInfo);
-  TargetRegistry::RegisterMCCodeGenInfo(TheMos6502V9Target,
-                                        createMos6502V9MCCodeGenInfo);
-  TargetRegistry::RegisterMCCodeGenInfo(TheMos6502elTarget,
                                         createMos6502MCCodeGenInfo);
 }

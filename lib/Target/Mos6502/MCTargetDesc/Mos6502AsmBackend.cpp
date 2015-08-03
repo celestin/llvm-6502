@@ -106,8 +106,8 @@ namespace {
   public:
     Mos6502AsmBackend(const Target &T)
         : MCAsmBackend(), TheTarget(T),
-          IsLittleEndian(StringRef(TheTarget.getName()) == "mos6502el"),
-          Is64Bit(StringRef(TheTarget.getName()) == "mos6502v9") {}
+          IsLittleEndian(true),
+          Is64Bit(false) {}
 
     unsigned getNumFixupKinds() const override {
       return Mos6502::NumTargetFixupKinds;
