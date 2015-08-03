@@ -23,10 +23,10 @@
 using namespace llvm;
 
 // The generated AsmMatcher Mos6502GenAsmMatcher uses "Mos6502" as the target
-// namespace. But MOS6502 backend uses "SP" as its namespace.
+// namespace. But MOS6502 backend uses "M6502" as its namespace.
 namespace llvm {
   namespace Mos6502 {
-    using namespace SP;
+    using namespace M6502;
   }
 }
 
@@ -131,14 +131,14 @@ public:
     Mos6502::Q12, Mos6502::Q13, Mos6502::Q14, Mos6502::Q15 };
 
   static unsigned ASRRegs[32] = {
-    SP::Y,     SP::ASR1,  SP::ASR2,  SP::ASR3,
-    SP::ASR4,  SP::ASR5,  SP::ASR6, SP::ASR7,
-    SP::ASR8,  SP::ASR9,  SP::ASR10, SP::ASR11,
-    SP::ASR12, SP::ASR13, SP::ASR14, SP::ASR15,
-    SP::ASR16, SP::ASR17, SP::ASR18, SP::ASR19,
-    SP::ASR20, SP::ASR21, SP::ASR22, SP::ASR23,
-    SP::ASR24, SP::ASR25, SP::ASR26, SP::ASR27,
-    SP::ASR28, SP::ASR29, SP::ASR30, SP::ASR31};
+    M6502::Y,     M6502::ASR1,  M6502::ASR2,  M6502::ASR3,
+    M6502::ASR4,  M6502::ASR5,  M6502::ASR6, M6502::ASR7,
+    M6502::ASR8,  M6502::ASR9,  M6502::ASR10, M6502::ASR11,
+    M6502::ASR12, M6502::ASR13, M6502::ASR14, M6502::ASR15,
+    M6502::ASR16, M6502::ASR17, M6502::ASR18, M6502::ASR19,
+    M6502::ASR20, M6502::ASR21, M6502::ASR22, M6502::ASR23,
+    M6502::ASR24, M6502::ASR25, M6502::ASR26, M6502::ASR27,
+    M6502::ASR28, M6502::ASR29, M6502::ASR30, M6502::ASR31};
 
 /// Mos6502Operand - Instances of this class represent a parsed Mos6502 machine
 /// instruction.
@@ -421,7 +421,7 @@ void Mos6502AsmParser::expandSET(MCInst &Inst, SMLoc IDLoc,
     const MCExpr *Expr =
         Mos6502MCExpr::create(Mos6502MCExpr::VK_Mos6502_HI, ValExpr, getContext());
     TmpInst.setLoc(IDLoc);
-    TmpInst.setOpcode(SP::SETHIi);
+    TmpInst.setOpcode(M6502::SETHIi);
     TmpInst.addOperand(MCRegOp);
     TmpInst.addOperand(MCOperand::createExpr(Expr));
     Instructions.push_back(TmpInst);
@@ -433,7 +433,7 @@ void Mos6502AsmParser::expandSET(MCInst &Inst, SMLoc IDLoc,
     const MCExpr *Expr =
         Mos6502MCExpr::create(Mos6502MCExpr::VK_Mos6502_LO, ValExpr, getContext());
     TmpInst.setLoc(IDLoc);
-    TmpInst.setOpcode(SP::ORri);
+    TmpInst.setOpcode(M6502::ORri);
     TmpInst.addOperand(MCRegOp);
     TmpInst.addOperand(PrevReg);
     TmpInst.addOperand(MCOperand::createExpr(Expr));
@@ -457,7 +457,7 @@ bool Mos6502AsmParser::MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
       Inst.setLoc(IDLoc);
       Instructions.push_back(Inst);
       break;
-    case SP::SET:
+    case M6502::SET:
       expandSET(Inst, IDLoc, Instructions);
       break;
     }

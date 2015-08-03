@@ -113,7 +113,7 @@ static void EmitCall(MCStreamer &OutStreamer,
                      const MCSubtargetInfo &STI)
 {
   MCInst CallInst;
-  CallInst.setOpcode(SP::CALL);
+  CallInst.setOpcode(M6502::CALL);
   CallInst.addOperand(Callee);
   OutStreamer.EmitInstruction(CallInst, STI);
 }
@@ -123,7 +123,7 @@ static void EmitSETHI(MCStreamer &OutStreamer,
                       const MCSubtargetInfo &STI)
 {
   MCInst SETHIInst;
-  SETHIInst.setOpcode(SP::SETHIi);
+  SETHIInst.setOpcode(M6502::SETHIi);
   SETHIInst.addOperand(RD);
   SETHIInst.addOperand(Imm);
   OutStreamer.EmitInstruction(SETHIInst, STI);
@@ -144,19 +144,19 @@ static void EmitBinary(MCStreamer &OutStreamer, unsigned Opcode,
 static void EmitOR(MCStreamer &OutStreamer,
                    MCOperand &RS1, MCOperand &Imm, MCOperand &RD,
                    const MCSubtargetInfo &STI) {
-  EmitBinary(OutStreamer, SP::ORri, RS1, Imm, RD, STI);
+  EmitBinary(OutStreamer, M6502::ORri, RS1, Imm, RD, STI);
 }
 
 static void EmitADD(MCStreamer &OutStreamer,
                     MCOperand &RS1, MCOperand &RS2, MCOperand &RD,
                     const MCSubtargetInfo &STI) {
-  EmitBinary(OutStreamer, SP::ADDrr, RS1, RS2, RD, STI);
+  EmitBinary(OutStreamer, M6502::ADDrr, RS1, RS2, RD, STI);
 }
 
 static void EmitSHL(MCStreamer &OutStreamer,
                     MCOperand &RS1, MCOperand &Imm, MCOperand &RD,
                     const MCSubtargetInfo &STI) {
-  EmitBinary(OutStreamer, SP::SLLri, RS1, Imm, RD, STI);
+  EmitBinary(OutStreamer, M6502::SLLri, RS1, Imm, RD, STI);
 }
 
 
@@ -180,7 +180,7 @@ void Mos6502AsmPrinter::LowerGETPCXAndEmitMCInsts(const MachineInstr *MI,
     OutContext.getOrCreateSymbol(Twine("_GLOBAL_OFFSET_TABLE_"));
 
   const MachineOperand &MO = MI->getOperand(0);
-  assert(MO.getReg() != SP::O7 &&
+  assert(MO.getReg() != M6502::O7 &&
          "%o7 is assigned as destination for getpcx!");
 
   MCOperand MCRegOP = MCOperand::createReg(MO.getReg());
@@ -216,7 +216,7 @@ void Mos6502AsmPrinter::LowerGETPCXAndEmitMCInsts(const MachineInstr *MI,
                                                                    OutContext));
       EmitSHL(*OutStreamer, MCRegOP, imm, MCRegOP, STI);
       // Use register %o7 to load the lower 32 bits.
-      MCOperand RegO7 = MCOperand::createReg(SP::O7);
+      MCOperand RegO7 = MCOperand::createReg(M6502::O7);
       EmitHiLo(*OutStreamer, GOTLabel,
                Mos6502MCExpr::VK_Mos6502_HI, Mos6502MCExpr::VK_Mos6502_LO,
                RegO7, OutContext, STI);
@@ -230,7 +230,7 @@ void Mos6502AsmPrinter::LowerGETPCXAndEmitMCInsts(const MachineInstr *MI,
   MCSymbol *EndLabel   = OutContext.createTempSymbol();
   MCSymbol *SethiLabel = OutContext.createTempSymbol();
 
-  MCOperand RegO7   = MCOperand::createReg(SP::O7);
+  MCOperand RegO7   = MCOperand::createReg(M6502::O7);
 
   // <StartLabel>:
   //   call <EndLabel>
@@ -264,7 +264,7 @@ void Mos6502AsmPrinter::EmitInstruction(const MachineInstr *MI)
   case TargetOpcode::DBG_VALUE:
     // FIXME: Debug Value.
     return;
-  case SP::GETPCX:
+  case M6502::GETPCX:
     LowerGETPCXAndEmitMCInsts(MI, getSubtargetInfo());
     return;
   }
@@ -282,13 +282,13 @@ void Mos6502AsmPrinter::EmitFunctionBodyStart() {
     return;
 
   const MachineRegisterInfo &MRI = MF->getRegInfo();
-  const unsigned globalRegs[] = { SP::G2, SP::G3, SP::G6, SP::G7, 0 };
+  const unsigned globalRegs[] = { M6502::G2, M6502::G3, M6502::G6, M6502::G7, 0 };
   for (unsigned i = 0; globalRegs[i] != 0; ++i) {
     unsigned reg = globalRegs[i];
     if (MRI.use_empty(reg))
       continue;
 
-    if  (reg == SP::G6 || reg == SP::G7)
+    if  (reg == M6502::G6 || reg == M6502::G7)
       getTargetStreamer().emitMos6502RegisterIgnore(reg);
     else
       getTargetStreamer().emitMos6502RegisterScratch(reg);
@@ -304,10 +304,10 @@ void Mos6502AsmPrinter::printOperand(const MachineInstr *MI, int opNum,
 #ifndef NDEBUG
   // Verify the target flags.
   if (MO.isGlobal() || MO.isSymbol() || MO.isCPI()) {
-    if (MI->getOpcode() == SP::CALL)
+    if (MI->getOpcode() == M6502::CALL)
       assert(TF == Mos6502MCExpr::VK_Mos6502_None &&
              "Cannot handle target flags on call address");
-    else if (MI->getOpcode() == SP::SETHIi || MI->getOpcode() == SP::SETHIXi)
+    else if (MI->getOpcode() == M6502::SETHIi || MI->getOpcode() == M6502::SETHIXi)
       assert((TF == Mos6502MCExpr::VK_Mos6502_HI
               || TF == Mos6502MCExpr::VK_Mos6502_H44
               || TF == Mos6502MCExpr::VK_Mos6502_HH
@@ -317,24 +317,24 @@ void Mos6502AsmPrinter::printOperand(const MachineInstr *MI, int opNum,
               || TF == Mos6502MCExpr::VK_Mos6502_TLS_IE_HI22
               || TF == Mos6502MCExpr::VK_Mos6502_TLS_LE_HIX22) &&
              "Invalid target flags for address operand on sethi");
-    else if (MI->getOpcode() == SP::TLS_CALL)
+    else if (MI->getOpcode() == M6502::TLS_CALL)
       assert((TF == Mos6502MCExpr::VK_Mos6502_None
               || TF == Mos6502MCExpr::VK_Mos6502_TLS_GD_CALL
               || TF == Mos6502MCExpr::VK_Mos6502_TLS_LDM_CALL) &&
              "Cannot handle target flags on tls call address");
-    else if (MI->getOpcode() == SP::TLS_ADDrr)
+    else if (MI->getOpcode() == M6502::TLS_ADDrr)
       assert((TF == Mos6502MCExpr::VK_Mos6502_TLS_GD_ADD
               || TF == Mos6502MCExpr::VK_Mos6502_TLS_LDM_ADD
               || TF == Mos6502MCExpr::VK_Mos6502_TLS_LDO_ADD
               || TF == Mos6502MCExpr::VK_Mos6502_TLS_IE_ADD) &&
              "Cannot handle target flags on add for TLS");
-    else if (MI->getOpcode() == SP::TLS_LDrr)
+    else if (MI->getOpcode() == M6502::TLS_LDrr)
       assert(TF == Mos6502MCExpr::VK_Mos6502_TLS_IE_LD &&
              "Cannot handle target flags on ld for TLS");
-    else if (MI->getOpcode() == SP::TLS_LDXrr)
+    else if (MI->getOpcode() == M6502::TLS_LDXrr)
       assert(TF == Mos6502MCExpr::VK_Mos6502_TLS_IE_LDX &&
              "Cannot handle target flags on ldx for TLS");
-    else if (MI->getOpcode() == SP::XORri || MI->getOpcode() == SP::XORXri)
+    else if (MI->getOpcode() == M6502::XORri || MI->getOpcode() == M6502::XORXri)
       assert((TF == Mos6502MCExpr::VK_Mos6502_TLS_LDO_LOX10
               || TF == Mos6502MCExpr::VK_Mos6502_TLS_LE_LOX10) &&
              "Cannot handle target flags on xor for TLS");
@@ -395,7 +395,7 @@ void Mos6502AsmPrinter::printMemOperand(const MachineInstr *MI, int opNum,
   }
 
   if (MI->getOperand(opNum+1).isReg() &&
-      MI->getOperand(opNum+1).getReg() == SP::G0)
+      MI->getOperand(opNum+1).getReg() == M6502::G0)
     return;   // don't print "+%g0"
   if (MI->getOperand(opNum+1).isImm() &&
       MI->getOperand(opNum+1).getImm() == 0)

@@ -61,57 +61,57 @@ extern "C" void LLVMInitializeMos6502Disassembler() {
 }
 
 static const unsigned IntRegDecoderTable[] = {
-  SP::G0,  SP::G1,  SP::G2,  SP::G3,
-  SP::G4,  SP::G5,  SP::G6,  SP::G7,
-  SP::O0,  SP::O1,  SP::O2,  SP::O3,
-  SP::O4,  SP::O5,  SP::O6,  SP::O7,
-  SP::L0,  SP::L1,  SP::L2,  SP::L3,
-  SP::L4,  SP::L5,  SP::L6,  SP::L7,
-  SP::I0,  SP::I1,  SP::I2,  SP::I3,
-  SP::I4,  SP::I5,  SP::I6,  SP::I7 };
+  M6502::G0,  M6502::G1,  M6502::G2,  M6502::G3,
+  M6502::G4,  M6502::G5,  M6502::G6,  M6502::G7,
+  M6502::O0,  M6502::O1,  M6502::O2,  M6502::O3,
+  M6502::O4,  M6502::O5,  M6502::O6,  M6502::O7,
+  M6502::L0,  M6502::L1,  M6502::L2,  M6502::L3,
+  M6502::L4,  M6502::L5,  M6502::L6,  M6502::L7,
+  M6502::I0,  M6502::I1,  M6502::I2,  M6502::I3,
+  M6502::I4,  M6502::I5,  M6502::I6,  M6502::I7 };
 
 static const unsigned FPRegDecoderTable[] = {
-  SP::F0,   SP::F1,   SP::F2,   SP::F3,
-  SP::F4,   SP::F5,   SP::F6,   SP::F7,
-  SP::F8,   SP::F9,   SP::F10,  SP::F11,
-  SP::F12,  SP::F13,  SP::F14,  SP::F15,
-  SP::F16,  SP::F17,  SP::F18,  SP::F19,
-  SP::F20,  SP::F21,  SP::F22,  SP::F23,
-  SP::F24,  SP::F25,  SP::F26,  SP::F27,
-  SP::F28,  SP::F29,  SP::F30,  SP::F31 };
+  M6502::F0,   M6502::F1,   M6502::F2,   M6502::F3,
+  M6502::F4,   M6502::F5,   M6502::F6,   M6502::F7,
+  M6502::F8,   M6502::F9,   M6502::F10,  M6502::F11,
+  M6502::F12,  M6502::F13,  M6502::F14,  M6502::F15,
+  M6502::F16,  M6502::F17,  M6502::F18,  M6502::F19,
+  M6502::F20,  M6502::F21,  M6502::F22,  M6502::F23,
+  M6502::F24,  M6502::F25,  M6502::F26,  M6502::F27,
+  M6502::F28,  M6502::F29,  M6502::F30,  M6502::F31 };
 
 static const unsigned DFPRegDecoderTable[] = {
-  SP::D0,   SP::D16,  SP::D1,   SP::D17,
-  SP::D2,   SP::D18,  SP::D3,   SP::D19,
-  SP::D4,   SP::D20,  SP::D5,   SP::D21,
-  SP::D6,   SP::D22,  SP::D7,   SP::D23,
-  SP::D8,   SP::D24,  SP::D9,   SP::D25,
-  SP::D10,  SP::D26,  SP::D11,  SP::D27,
-  SP::D12,  SP::D28,  SP::D13,  SP::D29,
-  SP::D14,  SP::D30,  SP::D15,  SP::D31 };
+  M6502::D0,   M6502::D16,  M6502::D1,   M6502::D17,
+  M6502::D2,   M6502::D18,  M6502::D3,   M6502::D19,
+  M6502::D4,   M6502::D20,  M6502::D5,   M6502::D21,
+  M6502::D6,   M6502::D22,  M6502::D7,   M6502::D23,
+  M6502::D8,   M6502::D24,  M6502::D9,   M6502::D25,
+  M6502::D10,  M6502::D26,  M6502::D11,  M6502::D27,
+  M6502::D12,  M6502::D28,  M6502::D13,  M6502::D29,
+  M6502::D14,  M6502::D30,  M6502::D15,  M6502::D31 };
 
 static const unsigned QFPRegDecoderTable[] = {
-  SP::Q0,  SP::Q8,   ~0U,  ~0U,
-  SP::Q1,  SP::Q9,   ~0U,  ~0U,
-  SP::Q2,  SP::Q10,  ~0U,  ~0U,
-  SP::Q3,  SP::Q11,  ~0U,  ~0U,
-  SP::Q4,  SP::Q12,  ~0U,  ~0U,
-  SP::Q5,  SP::Q13,  ~0U,  ~0U,
-  SP::Q6,  SP::Q14,  ~0U,  ~0U,
-  SP::Q7,  SP::Q15,  ~0U,  ~0U } ;
+  M6502::Q0,  M6502::Q8,   ~0U,  ~0U,
+  M6502::Q1,  M6502::Q9,   ~0U,  ~0U,
+  M6502::Q2,  M6502::Q10,  ~0U,  ~0U,
+  M6502::Q3,  M6502::Q11,  ~0U,  ~0U,
+  M6502::Q4,  M6502::Q12,  ~0U,  ~0U,
+  M6502::Q5,  M6502::Q13,  ~0U,  ~0U,
+  M6502::Q6,  M6502::Q14,  ~0U,  ~0U,
+  M6502::Q7,  M6502::Q15,  ~0U,  ~0U } ;
 
 static const unsigned FCCRegDecoderTable[] = {
-  SP::FCC0, SP::FCC1, SP::FCC2, SP::FCC3 };
+  M6502::FCC0, M6502::FCC1, M6502::FCC2, M6502::FCC3 };
 
 static const unsigned ASRRegDecoderTable[] = {
-  SP::Y,     SP::ASR1,  SP::ASR2,  SP::ASR3,
-  SP::ASR4,  SP::ASR5,  SP::ASR6,  SP::ASR7,
-  SP::ASR8,  SP::ASR9,  SP::ASR10, SP::ASR11,
-  SP::ASR12, SP::ASR13, SP::ASR14, SP::ASR15,
-  SP::ASR16, SP::ASR17, SP::ASR18, SP::ASR19,
-  SP::ASR20, SP::ASR21, SP::ASR22, SP::ASR23,
-  SP::ASR24, SP::ASR25, SP::ASR26, SP::ASR27,
-  SP::ASR28, SP::ASR29, SP::ASR30, SP::ASR31};
+  M6502::Y,     M6502::ASR1,  M6502::ASR2,  M6502::ASR3,
+  M6502::ASR4,  M6502::ASR5,  M6502::ASR6,  M6502::ASR7,
+  M6502::ASR8,  M6502::ASR9,  M6502::ASR10, M6502::ASR11,
+  M6502::ASR12, M6502::ASR13, M6502::ASR14, M6502::ASR15,
+  M6502::ASR16, M6502::ASR17, M6502::ASR18, M6502::ASR19,
+  M6502::ASR20, M6502::ASR21, M6502::ASR22, M6502::ASR23,
+  M6502::ASR24, M6502::ASR25, M6502::ASR26, M6502::ASR27,
+  M6502::ASR28, M6502::ASR29, M6502::ASR30, M6502::ASR31};
 
 static DecodeStatus DecodeIntRegsRegisterClass(MCInst &Inst,
                                                unsigned RegNo,

@@ -36,7 +36,7 @@ using namespace llvm;
 static MCAsmInfo *createMos6502MCAsmInfo(const MCRegisterInfo &MRI,
                                        const Triple &TT) {
   MCAsmInfo *MAI = new Mos6502ELFMCAsmInfo(TT);
-  unsigned Reg = MRI.getDwarfRegNum(SP::O6, true);
+  unsigned Reg = MRI.getDwarfRegNum(M6502::O6, true);
   MCCFIInstruction Inst = MCCFIInstruction::createDefCfa(nullptr, Reg, 0);
   MAI->addInitialFrameState(Inst);
   return MAI;
@@ -50,7 +50,7 @@ static MCInstrInfo *createMos6502MCInstrInfo() {
 
 static MCRegisterInfo *createMos6502MCRegisterInfo(const Triple &TT) {
   MCRegisterInfo *X = new MCRegisterInfo();
-  InitMos6502MCRegisterInfo(X, SP::O7);
+  InitMos6502MCRegisterInfo(X, M6502::O7);
   return X;
 }
 

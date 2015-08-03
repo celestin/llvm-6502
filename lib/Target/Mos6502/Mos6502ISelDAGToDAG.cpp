@@ -137,7 +137,7 @@ bool Mos6502DAGToDAGISel::SelectADDRrr(SDValue Addr, SDValue &R1, SDValue &R2) {
   }
 
   R1 = Addr;
-  R2 = CurDAG->getRegister(SP::G0, TLI->getPointerTy(CurDAG->getDataLayout()));
+  R2 = CurDAG->getRegister(M6502::G0, TLI->getPointerTy(CurDAG->getDataLayout()));
   return true;
 }
 
@@ -165,18 +165,18 @@ SDNode *Mos6502DAGToDAGISel::Select(SDNode *N) {
     // Set the Y register to the high-part.
     SDValue TopPart;
     if (N->getOpcode() == ISD::SDIV) {
-      TopPart = SDValue(CurDAG->getMachineNode(SP::SRAri, dl, MVT::i32, DivLHS,
+      TopPart = SDValue(CurDAG->getMachineNode(M6502::SRAri, dl, MVT::i32, DivLHS,
                                    CurDAG->getTargetConstant(31, dl, MVT::i32)),
                         0);
     } else {
-      TopPart = CurDAG->getRegister(SP::G0, MVT::i32);
+      TopPart = CurDAG->getRegister(M6502::G0, MVT::i32);
     }
-    TopPart = CurDAG->getCopyToReg(CurDAG->getEntryNode(), dl, SP::Y, TopPart,
+    TopPart = CurDAG->getCopyToReg(CurDAG->getEntryNode(), dl, M6502::Y, TopPart,
                                    SDValue())
                   .getValue(1);
 
     // FIXME: Handle div by immediate.
-    unsigned Opcode = N->getOpcode() == ISD::SDIV ? SP::SDIVrr : SP::UDIVrr;
+    unsigned Opcode = N->getOpcode() == ISD::SDIV ? M6502::SDIVrr : M6502::UDIVrr;
     return CurDAG->SelectNodeTo(N, Opcode, MVT::i32, DivLHS, DivRHS,
                                 TopPart);
   }
@@ -185,7 +185,7 @@ SDNode *Mos6502DAGToDAGISel::Select(SDNode *N) {
     // FIXME: Handle mul by immediate.
     SDValue MulLHS = N->getOperand(0);
     SDValue MulRHS = N->getOperand(1);
-    unsigned Opcode = N->getOpcode() == ISD::MULHU ? SP::UMULrr : SP::SMULrr;
+    unsigned Opcode = N->getOpcode() == ISD::MULHU ? M6502::UMULrr : M6502::SMULrr;
     SDNode *Mul =
         CurDAG->getMachineNode(Opcode, dl, MVT::i32, MVT::i32, MulLHS, MulRHS);
     SDValue ResultHigh = SDValue(Mul, 1);

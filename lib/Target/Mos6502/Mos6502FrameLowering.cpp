@@ -49,8 +49,8 @@ void Mos6502FrameLowering::emitSPAdjustment(MachineFunction &MF,
       *static_cast<const Mos6502InstrInfo *>(MF.getSubtarget().getInstrInfo());
 
   if (NumBytes >= -4096 && NumBytes < 4096) {
-    BuildMI(MBB, MBBI, dl, TII.get(ADDri), SP::O6)
-      .addReg(SP::O6).addImm(NumBytes);
+    BuildMI(MBB, MBBI, dl, TII.get(ADDri), M6502::O6)
+      .addReg(M6502::O6).addImm(NumBytes);
     return;
   }
 
@@ -61,12 +61,12 @@ void Mos6502FrameLowering::emitSPAdjustment(MachineFunction &MF,
     // sethi %hi(NumBytes), %g1
     // or %g1, %lo(NumBytes), %g1
     // add %sp, %g1, %sp
-    BuildMI(MBB, MBBI, dl, TII.get(SP::SETHIi), SP::G1)
+    BuildMI(MBB, MBBI, dl, TII.get(M6502::SETHIi), M6502::G1)
       .addImm(HI22(NumBytes));
-    BuildMI(MBB, MBBI, dl, TII.get(SP::ORri), SP::G1)
-      .addReg(SP::G1).addImm(LO10(NumBytes));
-    BuildMI(MBB, MBBI, dl, TII.get(ADDrr), SP::O6)
-      .addReg(SP::O6).addReg(SP::G1);
+    BuildMI(MBB, MBBI, dl, TII.get(M6502::ORri), M6502::G1)
+      .addReg(M6502::G1).addImm(LO10(NumBytes));
+    BuildMI(MBB, MBBI, dl, TII.get(ADDrr), M6502::O6)
+      .addReg(M6502::O6).addReg(M6502::G1);
     return ;
   }
 
@@ -74,12 +74,12 @@ void Mos6502FrameLowering::emitSPAdjustment(MachineFunction &MF,
   // sethi %hix(NumBytes), %g1
   // xor %g1, %lox(NumBytes), %g1
   // add %sp, %g1, %sp
-  BuildMI(MBB, MBBI, dl, TII.get(SP::SETHIi), SP::G1)
+  BuildMI(MBB, MBBI, dl, TII.get(M6502::SETHIi), M6502::G1)
     .addImm(HIX22(NumBytes));
-  BuildMI(MBB, MBBI, dl, TII.get(SP::XORri), SP::G1)
-    .addReg(SP::G1).addImm(LOX10(NumBytes));
-  BuildMI(MBB, MBBI, dl, TII.get(ADDrr), SP::O6)
-    .addReg(SP::O6).addReg(SP::G1);
+  BuildMI(MBB, MBBI, dl, TII.get(M6502::XORri), M6502::G1)
+    .addReg(M6502::G1).addImm(LOX10(NumBytes));
+  BuildMI(MBB, MBBI, dl, TII.get(ADDrr), M6502::O6)
+    .addReg(M6502::O6).addReg(M6502::G1);
 }
 
 void Mos6502FrameLowering::emitPrologue(MachineFunction &MF,
@@ -96,20 +96,20 @@ void Mos6502FrameLowering::emitPrologue(MachineFunction &MF,
   // Get the number of bytes to allocate from the FrameInfo
   int NumBytes = (int) MFI->getStackSize();
 
-  unsigned SAVEri = SP::SAVEri;
-  unsigned SAVErr = SP::SAVErr;
+  unsigned SAVEri = M6502::SAVEri;
+  unsigned SAVErr = M6502::SAVErr;
   if (FuncInfo->isLeafProc()) {
     if (NumBytes == 0)
       return;
-    SAVEri = SP::ADDri;
-    SAVErr = SP::ADDrr;
+    SAVEri = M6502::ADDri;
+    SAVErr = M6502::ADDrr;
   }
   NumBytes = -MF.getSubtarget<Mos6502Subtarget>().getAdjustedFrameSize(NumBytes);
   emitSPAdjustment(MF, MBB, MBBI, NumBytes, SAVErr, SAVEri);
 
   MachineModuleInfo &MMI = MF.getMMI();
   const MCRegisterInfo *MRI = MMI.getContext().getRegisterInfo();
-  unsigned regFP = MRI->getDwarfRegNum(SP::I6, true);
+  unsigned regFP = MRI->getDwarfRegNum(M6502::I6, true);
 
   // Emit ".cfi_def_cfa_register 30".
   unsigned CFIIndex =
@@ -122,8 +122,8 @@ void Mos6502FrameLowering::emitPrologue(MachineFunction &MF,
   BuildMI(MBB, MBBI, dl, TII.get(TargetOpcode::CFI_INSTRUCTION))
       .addCFIIndex(CFIIndex);
 
-  unsigned regInRA = MRI->getDwarfRegNum(SP::I7, true);
-  unsigned regOutRA = MRI->getDwarfRegNum(SP::O7, true);
+  unsigned regInRA = MRI->getDwarfRegNum(M6502::I7, true);
+  unsigned regOutRA = MRI->getDwarfRegNum(M6502::O7, true);
   // Emit ".cfi_register 15, 31".
   CFIIndex = MMI.addFrameInst(
       MCCFIInstruction::createRegister(nullptr, regOutRA, regInRA));
@@ -137,11 +137,11 @@ eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
   if (!hasReservedCallFrame(MF)) {
     MachineInstr &MI = *I;
     int Size = MI.getOperand(0).getImm();
-    if (MI.getOpcode() == SP::ADJCALLSTACKDOWN)
+    if (MI.getOpcode() == M6502::ADJCALLSTACKDOWN)
       Size = -Size;
 
     if (Size)
-      emitSPAdjustment(MF, MBB, I, Size, SP::ADDrr, SP::ADDri);
+      emitSPAdjustment(MF, MBB, I, Size, M6502::ADDrr, M6502::ADDri);
   }
   MBB.erase(I);
 }
@@ -154,11 +154,11 @@ void Mos6502FrameLowering::emitEpilogue(MachineFunction &MF,
   const Mos6502InstrInfo &TII =
       *static_cast<const Mos6502InstrInfo *>(MF.getSubtarget().getInstrInfo());
   DebugLoc dl = MBBI->getDebugLoc();
-  assert(MBBI->getOpcode() == SP::RETL &&
+  assert(MBBI->getOpcode() == M6502::RETL &&
          "Can only put epilog before 'retl' instruction!");
   if (!FuncInfo->isLeafProc()) {
-    BuildMI(MBB, MBBI, dl, TII.get(SP::RESTORErr), SP::G0).addReg(SP::G0)
-      .addReg(SP::G0);
+    BuildMI(MBB, MBBI, dl, TII.get(M6502::RESTORErr), M6502::G0).addReg(M6502::G0)
+      .addReg(M6502::G0);
     return;
   }
   MachineFrameInfo *MFI = MF.getFrameInfo();
@@ -168,7 +168,7 @@ void Mos6502FrameLowering::emitEpilogue(MachineFunction &MF,
     return;
 
   NumBytes = MF.getSubtarget<Mos6502Subtarget>().getAdjustedFrameSize(NumBytes);
-  emitSPAdjustment(MF, MBB, MBBI, NumBytes, SP::ADDrr, SP::ADDri);
+  emitSPAdjustment(MF, MBB, MBBI, NumBytes, M6502::ADDrr, M6502::ADDri);
 }
 
 bool Mos6502FrameLowering::hasReservedCallFrame(const MachineFunction &MF) const {
@@ -189,11 +189,11 @@ bool Mos6502FrameLowering::hasFP(const MachineFunction &MF) const {
 static bool LLVM_ATTRIBUTE_UNUSED verifyLeafProcRegUse(MachineRegisterInfo *MRI)
 {
 
-  for (unsigned reg = SP::I0; reg <= SP::I7; ++reg)
+  for (unsigned reg = M6502::I0; reg <= M6502::I7; ++reg)
     if (!MRI->reg_nodbg_empty(reg))
       return false;
 
-  for (unsigned reg = SP::L0; reg <= SP::L7; ++reg)
+  for (unsigned reg = M6502::L0; reg <= M6502::L7; ++reg)
     if (!MRI->reg_nodbg_empty(reg))
       return false;
 
@@ -207,8 +207,8 @@ bool Mos6502FrameLowering::isLeafProc(MachineFunction &MF) const
   MachineFrameInfo    *MFI = MF.getFrameInfo();
 
   return !(MFI->hasCalls()                 // has calls
-           || !MRI.reg_nodbg_empty(SP::L0) // Too many registers needed
-           || !MRI.reg_nodbg_empty(SP::O6) // %SP is used
+           || !MRI.reg_nodbg_empty(M6502::L0) // Too many registers needed
+           || !MRI.reg_nodbg_empty(M6502::O6) // %SP is used
            || hasFP(MF));                  // need %FP
 }
 
@@ -217,10 +217,10 @@ void Mos6502FrameLowering::remapRegsForLeafProc(MachineFunction &MF) const {
   MachineRegisterInfo &MRI = MF.getRegInfo();
 
   // Remap %i[0-7] to %o[0-7].
-  for (unsigned reg = SP::I0; reg <= SP::I7; ++reg) {
+  for (unsigned reg = M6502::I0; reg <= M6502::I7; ++reg) {
     if (MRI.reg_nodbg_empty(reg))
       continue;
-    unsigned mapped_reg = (reg - SP::I0 + SP::O0);
+    unsigned mapped_reg = (reg - M6502::I0 + M6502::O0);
     assert(MRI.reg_nodbg_empty(mapped_reg));
 
     // Replace I register with O register.
@@ -230,11 +230,11 @@ void Mos6502FrameLowering::remapRegsForLeafProc(MachineFunction &MF) const {
   // Rewrite MBB's Live-ins.
   for (MachineFunction::iterator MBB = MF.begin(), E = MF.end();
        MBB != E; ++MBB) {
-    for (unsigned reg = SP::I0; reg <= SP::I7; ++reg) {
+    for (unsigned reg = M6502::I0; reg <= M6502::I7; ++reg) {
       if (!MBB->isLiveIn(reg))
         continue;
       MBB->removeLiveIn(reg);
-      MBB->addLiveIn(reg - SP::I0 + SP::O0);
+      MBB->addLiveIn(reg - M6502::I0 + M6502::O0);
     }
   }
 

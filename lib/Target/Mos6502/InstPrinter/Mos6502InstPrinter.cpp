@@ -23,10 +23,10 @@ using namespace llvm;
 #define DEBUG_TYPE "asm-printer"
 
 // The generated AsmMatcher Mos6502GenAsmWriter uses "Mos6502" as the target
-// namespace. But MOS6502 backend uses "SP" as its namespace.
+// namespace. But MOS6502 backend uses "M6502" as its namespace.
 namespace llvm {
 namespace Mos6502 {
-  using namespace SP;
+  using namespace M6502;
 }
 }
 
@@ -55,46 +55,46 @@ bool Mos6502InstPrinter::printMos6502AliasInstr(const MCInst *MI,
                                             raw_ostream &O) {
   switch (MI->getOpcode()) {
   default: return false;
-  case SP::JMPLrr:
-  case SP::JMPLri: {
+  case M6502::JMPLrr:
+  case M6502::JMPLri: {
     if (MI->getNumOperands() != 3)
       return false;
     if (!MI->getOperand(0).isReg())
       return false;
     switch (MI->getOperand(0).getReg()) {
     default: return false;
-    case SP::G0: // jmp $addr | ret | retl
+    case M6502::G0: // jmp $addr | ret | retl
       if (MI->getOperand(2).isImm() &&
           MI->getOperand(2).getImm() == 8) {
         switch(MI->getOperand(1).getReg()) {
         default: break;
-        case SP::I7: O << "\tret"; return true;
-        case SP::O7: O << "\tretl"; return true;
+        case M6502::I7: O << "\tret"; return true;
+        case M6502::O7: O << "\tretl"; return true;
         }
       }
       O << "\tjmp "; printMemOperand(MI, 1, STI, O);
       return true;
-    case SP::O7: // call $addr
+    case M6502::O7: // call $addr
       O << "\tcall "; printMemOperand(MI, 1, STI, O);
       return true;
     }
   }
-  case SP::V9FCMPS:  case SP::V9FCMPD:  case SP::V9FCMPQ:
-  case SP::V9FCMPES: case SP::V9FCMPED: case SP::V9FCMPEQ: {
+  case M6502::V9FCMPS:  case M6502::V9FCMPD:  case M6502::V9FCMPQ:
+  case M6502::V9FCMPES: case M6502::V9FCMPED: case M6502::V9FCMPEQ: {
     if (isV9(STI)
         || (MI->getNumOperands() != 3)
         || (!MI->getOperand(0).isReg())
-        || (MI->getOperand(0).getReg() != SP::FCC0))
+        || (MI->getOperand(0).getReg() != M6502::FCC0))
       return false;
     // if V8, skip printing %fcc0.
     switch(MI->getOpcode()) {
     default:
-    case SP::V9FCMPS:  O << "\tfcmps "; break;
-    case SP::V9FCMPD:  O << "\tfcmpd "; break;
-    case SP::V9FCMPQ:  O << "\tfcmpq "; break;
-    case SP::V9FCMPES: O << "\tfcmpes "; break;
-    case SP::V9FCMPED: O << "\tfcmped "; break;
-    case SP::V9FCMPEQ: O << "\tfcmpeq "; break;
+    case M6502::V9FCMPS:  O << "\tfcmps "; break;
+    case M6502::V9FCMPD:  O << "\tfcmpd "; break;
+    case M6502::V9FCMPQ:  O << "\tfcmpq "; break;
+    case M6502::V9FCMPES: O << "\tfcmpes "; break;
+    case M6502::V9FCMPED: O << "\tfcmped "; break;
+    case M6502::V9FCMPEQ: O << "\tfcmpeq "; break;
     }
     printOperand(MI, 1, STI, O);
     O << ", ";
@@ -136,7 +136,7 @@ void Mos6502InstPrinter::printMemOperand(const MCInst *MI, int opNum,
   }
   const MCOperand &MO = MI->getOperand(opNum+1);
 
-  if (MO.isReg() && MO.getReg() == SP::G0)
+  if (MO.isReg() && MO.getReg() == M6502::G0)
     return;   // don't print "+%g0"
   if (MO.isImm() && MO.getImm() == 0)
     return;   // don't print "+0"
@@ -152,17 +152,17 @@ void Mos6502InstPrinter::printCCOperand(const MCInst *MI, int opNum,
   int CC = (int)MI->getOperand(opNum).getImm();
   switch (MI->getOpcode()) {
   default: break;
-  case SP::FBCOND:
-  case SP::FBCONDA:
-  case SP::BPFCC:
-  case SP::BPFCCA:
-  case SP::BPFCCNT:
-  case SP::BPFCCANT:
-  case SP::MOVFCCrr:  case SP::V9MOVFCCrr:
-  case SP::MOVFCCri:  case SP::V9MOVFCCri:
-  case SP::FMOVS_FCC: case SP::V9FMOVS_FCC:
-  case SP::FMOVD_FCC: case SP::V9FMOVD_FCC:
-  case SP::FMOVQ_FCC: case SP::V9FMOVQ_FCC:
+  case M6502::FBCOND:
+  case M6502::FBCONDA:
+  case M6502::BPFCC:
+  case M6502::BPFCCA:
+  case M6502::BPFCCNT:
+  case M6502::BPFCCANT:
+  case M6502::MOVFCCrr:  case M6502::V9MOVFCCrr:
+  case M6502::MOVFCCri:  case M6502::V9MOVFCCri:
+  case M6502::FMOVS_FCC: case M6502::V9FMOVS_FCC:
+  case M6502::FMOVD_FCC: case M6502::V9FMOVD_FCC:
+  case M6502::FMOVQ_FCC: case M6502::V9FMOVQ_FCC:
     // Make sure CC is a fp conditional flag.
     CC = (CC < 16) ? (CC + 16) : CC;
     break;

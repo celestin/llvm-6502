@@ -13,15 +13,15 @@
 
 class Mos6502Reg<bits<16> Enc, string n> : Register<n> {
   let HWEncoding = Enc;
-  let Namespace = "SP";
+  let Namespace = "M6502";
 }
 
 class Mos6502CtrlReg<bits<16> Enc, string n>: Register<n> {
   let HWEncoding = Enc;
-  let Namespace = "SP";
+  let Namespace = "M6502";
 }
 
-let Namespace = "SP" in {
+let Namespace = "M6502" in {
 def sub_even : SubRegIndex<32>;
 def sub_odd  : SubRegIndex<32, 32>;
 def sub_even64 : SubRegIndex<64>;
@@ -225,7 +225,7 @@ def Q15 : Rq<29, "F60", [D30, D31]>;
 // This register class should not be used to hold i64 values, use the I64Regs
 // register class for that. The i64 type is included here to allow i64 patterns
 // using the integer instructions.
-def IntRegs : RegisterClass<"SP", [i32, i64], 32,
+def IntRegs : RegisterClass<"M6502", [i32, i64], 32,
                             (add (sequence "I%u", 0, 7),
                                  (sequence "G%u", 0, 7),
                                  (sequence "L%u", 0, 7),
@@ -235,20 +235,20 @@ def IntRegs : RegisterClass<"SP", [i32, i64], 32,
 // These are the same as the 32-bit registers, so TableGen will consider this
 // to be a sub-class of IntRegs. That works out because requiring a 64-bit
 // spill slot is a stricter constraint than only requiring a 32-bit spill slot.
-def I64Regs : RegisterClass<"SP", [i64], 64, (add IntRegs)>;
+def I64Regs : RegisterClass<"M6502", [i64], 64, (add IntRegs)>;
 
 // Floating point register classes.
-def FPRegs : RegisterClass<"SP", [f32], 32, (sequence "F%u", 0, 31)>;
+def FPRegs : RegisterClass<"M6502", [f32], 32, (sequence "F%u", 0, 31)>;
 
-def DFPRegs : RegisterClass<"SP", [f64], 64, (sequence "D%u", 0, 31)>;
+def DFPRegs : RegisterClass<"M6502", [f64], 64, (sequence "D%u", 0, 31)>;
 
-def QFPRegs : RegisterClass<"SP", [f128], 128, (sequence "Q%u", 0, 15)>;
+def QFPRegs : RegisterClass<"M6502", [f128], 128, (sequence "Q%u", 0, 15)>;
 
 // Floating point control register classes.
-def FCCRegs : RegisterClass<"SP", [i1], 1, (sequence "FCC%u", 0, 3)>;
+def FCCRegs : RegisterClass<"M6502", [i1], 1, (sequence "FCC%u", 0, 3)>;
 
 // Ancillary state registers
-def ASRRegs : RegisterClass<"SP", [i32], 32,
+def ASRRegs : RegisterClass<"M6502", [i32], 32,
                             (add Y, (sequence "ASR%u", 1, 31))> {
   let isAllocatable = 0;
 }

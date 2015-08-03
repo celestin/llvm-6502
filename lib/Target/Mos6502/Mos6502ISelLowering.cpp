@@ -54,7 +54,7 @@ static bool CC_Mos6502_Assign_f64(unsigned &ValNo, MVT &ValVT,
                                 ISD::ArgFlagsTy &ArgFlags, CCState &State)
 {
   static const MCPhysReg RegList[] = {
-    SP::I0, SP::I1, SP::I2, SP::I3, SP::I4, SP::I5
+    M6502::I0, M6502::I1, M6502::I2, M6502::I3, M6502::I4, M6502::I5
   };
   // Try to get first reg.
   if (unsigned Reg = State.AllocateReg(RegList)) {
@@ -93,16 +93,16 @@ static bool CC_Mos650264_Full(unsigned &ValNo, MVT &ValVT,
 
   if (LocVT == MVT::i64 && Offset < 6*8)
     // Promote integers to %i0-%i5.
-    Reg = SP::I0 + Offset/8;
+    Reg = M6502::I0 + Offset/8;
   else if (LocVT == MVT::f64 && Offset < 16*8)
     // Promote doubles to %d0-%d30. (Which LLVM calls D0-D15).
-    Reg = SP::D0 + Offset/8;
+    Reg = M6502::D0 + Offset/8;
   else if (LocVT == MVT::f32 && Offset < 16*8)
     // Promote floats to %f1, %f3, ...
-    Reg = SP::F1 + Offset/4;
+    Reg = M6502::F1 + Offset/4;
   else if (LocVT == MVT::f128 && Offset < 16*8)
     // Promote long doubles to %q0-%q28. (Which LLVM calls Q0-Q7).
-    Reg = SP::Q0 + Offset/16;
+    Reg = M6502::Q0 + Offset/16;
 
   // Promote to register when possible, otherwise use the stack slot.
   if (Reg) {
@@ -131,14 +131,14 @@ static bool CC_Mos650264_Half(unsigned &ValNo, MVT &ValVT,
 
   if (LocVT == MVT::f32 && Offset < 16*8) {
     // Promote floats to %f0-%f31.
-    State.addLoc(CCValAssign::getReg(ValNo, ValVT, SP::F0 + Offset/4,
+    State.addLoc(CCValAssign::getReg(ValNo, ValVT, M6502::F0 + Offset/4,
                                      LocVT, LocInfo));
     return true;
   }
 
   if (LocVT == MVT::i32 && Offset < 6*8) {
     // Promote integers to %i0-%i5, using half the register.
-    unsigned Reg = SP::I0 + Offset/8;
+    unsigned Reg = M6502::I0 + Offset/8;
     LocVT = MVT::i64;
     LocInfo = CCValAssign::AExt;
 
@@ -161,9 +161,9 @@ static bool CC_Mos650264_Half(unsigned &ValNo, MVT &ValVT,
 // callee's register window. This function translates registers to the
 // corresponding caller window %o register.
 static unsigned toCallerWindow(unsigned Reg) {
-  assert(SP::I0 + 7 == SP::I7 && SP::O0 + 7 == SP::O7 && "Unexpected enum");
-  if (Reg >= SP::I0 && Reg <= SP::I7)
-    return Reg - SP::I0 + SP::O0;
+  assert(M6502::I0 + 7 == M6502::I7 && M6502::O0 + 7 == M6502::O7 && "Unexpected enum");
+  if (Reg >= M6502::I0 && Reg <= M6502::I7)
+    return Reg - M6502::I0 + M6502::O0;
   return Reg;
 }
 
@@ -223,9 +223,9 @@ Mos6502TargetLowering::LowerReturn_32(SDValue Chain,
       llvm_unreachable("sret virtual register not created in the entry block");
     auto PtrVT = getPointerTy(DAG.getDataLayout());
     SDValue Val = DAG.getCopyFromReg(Chain, DL, Reg, PtrVT);
-    Chain = DAG.getCopyToReg(Chain, DL, SP::I0, Val, Flag);
+    Chain = DAG.getCopyToReg(Chain, DL, M6502::I0, Val, Flag);
     Flag = Chain.getValue(1);
-    RetOps.push_back(DAG.getRegister(SP::I0, PtrVT));
+    RetOps.push_back(DAG.getRegister(M6502::I0, PtrVT));
     RetAddrOffset = 12; // CallInst + Delay Slot + Unimp
   }
 
@@ -376,7 +376,7 @@ LowerFormalArguments_32(SDValue Chain,
     if (VA.isRegLoc()) {
       if (VA.needsCustom()) {
         assert(VA.getLocVT() == MVT::f64);
-        unsigned VRegHi = RegInfo.createVirtualRegister(&SP::IntRegsRegClass);
+        unsigned VRegHi = RegInfo.createVirtualRegister(&M6502::IntRegsRegClass);
         MF.getRegInfo().addLiveIn(VA.getLocReg(), VRegHi);
         SDValue HiVal = DAG.getCopyFromReg(Chain, dl, VRegHi, MVT::i32);
 
@@ -393,7 +393,7 @@ LowerFormalArguments_32(SDValue Chain,
                               false, false, false, 0);
         } else {
           unsigned loReg = MF.addLiveIn(NextVA.getLocReg(),
-                                        &SP::IntRegsRegClass);
+                                        &M6502::IntRegsRegClass);
           LoVal = DAG.getCopyFromReg(Chain, dl, loReg, MVT::i32);
         }
         SDValue WholeValue =
@@ -402,7 +402,7 @@ LowerFormalArguments_32(SDValue Chain,
         InVals.push_back(WholeValue);
         continue;
       }
-      unsigned VReg = RegInfo.createVirtualRegister(&SP::IntRegsRegClass);
+      unsigned VReg = RegInfo.createVirtualRegister(&M6502::IntRegsRegClass);
       MF.getRegInfo().addLiveIn(VA.getLocReg(), VReg);
       SDValue Arg = DAG.getCopyFromReg(Chain, dl, VReg, MVT::i32);
       if (VA.getLocVT() == MVT::f32)
@@ -487,7 +487,7 @@ LowerFormalArguments_32(SDValue Chain,
     Mos6502MachineFunctionInfo *SFI = MF.getInfo<Mos6502MachineFunctionInfo>();
     unsigned Reg = SFI->getSRetReturnReg();
     if (!Reg) {
-      Reg = MF.getRegInfo().createVirtualRegister(&SP::IntRegsRegClass);
+      Reg = MF.getRegInfo().createVirtualRegister(&M6502::IntRegsRegClass);
       SFI->setSRetReturnReg(Reg);
     }
     SDValue Copy = DAG.getCopyToReg(DAG.getEntryNode(), dl, Reg, InVals[0]);
@@ -497,7 +497,7 @@ LowerFormalArguments_32(SDValue Chain,
   // Store remaining ArgRegs to the stack if this is a varargs function.
   if (isVarArg) {
     static const MCPhysReg ArgRegs[] = {
-      SP::I0, SP::I1, SP::I2, SP::I3, SP::I4, SP::I5
+      M6502::I0, M6502::I1, M6502::I2, M6502::I3, M6502::I4, M6502::I5
     };
     unsigned NumAllocated = CCInfo.getFirstUnallocated(ArgRegs);
     const MCPhysReg *CurArgReg = ArgRegs+NumAllocated, *ArgRegEnd = ArgRegs+6;
@@ -515,7 +515,7 @@ LowerFormalArguments_32(SDValue Chain,
     std::vector<SDValue> OutChains;
 
     for (; CurArgReg != ArgRegEnd; ++CurArgReg) {
-      unsigned VReg = RegInfo.createVirtualRegister(&SP::IntRegsRegClass);
+      unsigned VReg = RegInfo.createVirtualRegister(&M6502::IntRegsRegClass);
       MF.getRegInfo().addLiveIn(*CurArgReg, VReg);
       SDValue Arg = DAG.getCopyFromReg(DAG.getRoot(), dl, VReg, MVT::i32);
 
@@ -636,7 +636,7 @@ LowerFormalArguments_64(SDValue Chain,
   // of how many arguments were actually passed.
   SmallVector<SDValue, 8> OutChains;
   for (; ArgOffset < 6*8; ArgOffset += 8) {
-    unsigned VReg = MF.addLiveIn(SP::I0 + ArgOffset/8, &SP::I64RegsRegClass);
+    unsigned VReg = MF.addLiveIn(M6502::I0 + ArgOffset/8, &M6502::I64RegsRegClass);
     SDValue VArg = DAG.getCopyFromReg(Chain, DL, VReg, MVT::i64);
     int FI = MF.getFrameInfo()->CreateFixedObject(8, ArgOffset + ArgArea, true);
     auto PtrVT = getPointerTy(MF.getDataLayout());
@@ -777,7 +777,7 @@ Mos6502TargetLowering::LowerCall_32(TargetLowering::CallLoweringInfo &CLI,
     if (Flags.isSRet()) {
       assert(VA.needsCustom());
       // store SRet argument in %sp+64
-      SDValue StackPtr = DAG.getRegister(SP::O6, MVT::i32);
+      SDValue StackPtr = DAG.getRegister(M6502::O6, MVT::i32);
       SDValue PtrOff = DAG.getIntPtrConstant(64, dl);
       PtrOff = DAG.getNode(ISD::ADD, dl, MVT::i32, StackPtr, PtrOff);
       MemOpChains.push_back(DAG.getStore(Chain, dl, Arg, PtrOff,
@@ -794,7 +794,7 @@ Mos6502TargetLowering::LowerCall_32(TargetLowering::CallLoweringInfo &CLI,
         unsigned Offset = VA.getLocMemOffset() + StackOffset;
         // if it is double-word aligned, just store.
         if (Offset % 8 == 0) {
-          SDValue StackPtr = DAG.getRegister(SP::O6, MVT::i32);
+          SDValue StackPtr = DAG.getRegister(M6502::O6, MVT::i32);
           SDValue PtrOff = DAG.getIntPtrConstant(Offset, dl);
           PtrOff = DAG.getNode(ISD::ADD, dl, MVT::i32, StackPtr, PtrOff);
           MemOpChains.push_back(DAG.getStore(Chain, dl, Arg, PtrOff,
@@ -827,7 +827,7 @@ Mos6502TargetLowering::LowerCall_32(TargetLowering::CallLoweringInfo &CLI,
         } else {
           // Store the low part in stack.
           unsigned Offset = NextVA.getLocMemOffset() + StackOffset;
-          SDValue StackPtr = DAG.getRegister(SP::O6, MVT::i32);
+          SDValue StackPtr = DAG.getRegister(M6502::O6, MVT::i32);
           SDValue PtrOff = DAG.getIntPtrConstant(Offset, dl);
           PtrOff = DAG.getNode(ISD::ADD, dl, MVT::i32, StackPtr, PtrOff);
           MemOpChains.push_back(DAG.getStore(Chain, dl, Lo, PtrOff,
@@ -837,7 +837,7 @@ Mos6502TargetLowering::LowerCall_32(TargetLowering::CallLoweringInfo &CLI,
       } else {
         unsigned Offset = VA.getLocMemOffset() + StackOffset;
         // Store the high part.
-        SDValue StackPtr = DAG.getRegister(SP::O6, MVT::i32);
+        SDValue StackPtr = DAG.getRegister(M6502::O6, MVT::i32);
         SDValue PtrOff = DAG.getIntPtrConstant(Offset, dl);
         PtrOff = DAG.getNode(ISD::ADD, dl, MVT::i32, StackPtr, PtrOff);
         MemOpChains.push_back(DAG.getStore(Chain, dl, Hi, PtrOff,
@@ -868,7 +868,7 @@ Mos6502TargetLowering::LowerCall_32(TargetLowering::CallLoweringInfo &CLI,
     assert(VA.isMemLoc());
 
     // Create a store off the stack pointer for this argument.
-    SDValue StackPtr = DAG.getRegister(SP::O6, MVT::i32);
+    SDValue StackPtr = DAG.getRegister(M6502::O6, MVT::i32);
     SDValue PtrOff = DAG.getIntPtrConstant(VA.getLocMemOffset() + StackOffset,
                                            dl);
     PtrOff = DAG.getNode(ISD::ADD, dl, MVT::i32, StackPtr, PtrOff);
@@ -1024,14 +1024,14 @@ static void fixupVariableFloatArgs(SmallVectorImpl<CCValAssign> &ArgLocs,
     CCValAssign NewVA;
 
     // Determine the offset into the argument array.
-    unsigned firstReg = (ValTy == MVT::f64) ? SP::D0 : SP::Q0;
+    unsigned firstReg = (ValTy == MVT::f64) ? M6502::D0 : M6502::Q0;
     unsigned argSize  = (ValTy == MVT::f64) ? 8 : 16;
     unsigned Offset = argSize * (VA.getLocReg() - firstReg);
     assert(Offset < 16*8 && "Offset out of range, bad register enum?");
 
     if (Offset < 6*8) {
       // This argument should go in %i0-%i5.
-      unsigned IReg = SP::I0 + Offset/8;
+      unsigned IReg = M6502::I0 + Offset/8;
       if (ValTy == MVT::f64)
         // Full register, just bitconvert into i64.
         NewVA = CCValAssign::getReg(VA.getValNo(), VA.getValVT(),
@@ -1131,9 +1131,9 @@ Mos6502TargetLowering::LowerCall_64(TargetLowering::CallLoweringInfo &CLI,
       if (VA.needsCustom() && VA.getValVT() == MVT::f128
           && VA.getLocVT() == MVT::i128) {
         // Store and reload into the interger register reg and reg+1.
-        unsigned Offset = 8 * (VA.getLocReg() - SP::I0);
+        unsigned Offset = 8 * (VA.getLocReg() - M6502::I0);
         unsigned StackOffset = Offset + Subtarget->getStackPointerBias() + 128;
-        SDValue StackPtr = DAG.getRegister(SP::O6, PtrVT);
+        SDValue StackPtr = DAG.getRegister(M6502::O6, PtrVT);
         SDValue HiPtrOff = DAG.getIntPtrConstant(StackOffset, DL);
         HiPtrOff = DAG.getNode(ISD::ADD, DL, PtrVT, StackPtr, HiPtrOff);
         SDValue LoPtrOff = DAG.getIntPtrConstant(StackOffset + 8, DL);
@@ -1181,7 +1181,7 @@ Mos6502TargetLowering::LowerCall_64(TargetLowering::CallLoweringInfo &CLI,
     assert(VA.isMemLoc());
 
     // Create a store off the stack pointer for this argument.
-    SDValue StackPtr = DAG.getRegister(SP::O6, PtrVT);
+    SDValue StackPtr = DAG.getRegister(M6502::O6, PtrVT);
     // The argument area starts at %fp+BIAS+128 in the callee frame,
     // %sp+BIAS+128 in ours.
     SDValue PtrOff = DAG.getIntPtrConstant(VA.getLocMemOffset() +
@@ -1373,12 +1373,12 @@ Mos6502TargetLowering::Mos6502TargetLowering(TargetMachine &TM,
   MVT PtrVT = MVT::getIntegerVT(8 * TM.getPointerSize());
 
   // Set up the register classes.
-  addRegisterClass(MVT::i32, &SP::IntRegsRegClass);
-  addRegisterClass(MVT::f32, &SP::FPRegsRegClass);
-  addRegisterClass(MVT::f64, &SP::DFPRegsRegClass);
-  addRegisterClass(MVT::f128, &SP::QFPRegsRegClass);
+  addRegisterClass(MVT::i32, &M6502::IntRegsRegClass);
+  addRegisterClass(MVT::f32, &M6502::FPRegsRegClass);
+  addRegisterClass(MVT::f64, &M6502::DFPRegsRegClass);
+  addRegisterClass(MVT::f128, &M6502::QFPRegsRegClass);
   if (Subtarget->is64Bit())
-    addRegisterClass(MVT::i64, &SP::I64RegsRegClass);
+    addRegisterClass(MVT::i64, &M6502::I64RegsRegClass);
 
   // Turn FP extload into load/fextend
   for (MVT VT : MVT::fp_valuetypes()) {
@@ -1579,10 +1579,10 @@ Mos6502TargetLowering::Mos6502TargetLowering(TargetMachine &TM,
   setOperationAction(ISD::STACKRESTORE      , MVT::Other, Expand);
   setOperationAction(ISD::DYNAMIC_STACKALLOC, MVT::i32  , Custom);
 
-  setExceptionPointerRegister(SP::I0);
-  setExceptionSelectorRegister(SP::I1);
+  setExceptionPointerRegister(M6502::I0);
+  setExceptionSelectorRegister(M6502::I1);
 
-  setStackPointerRegisterToSaveRestore(SP::O6);
+  setStackPointerRegisterToSaveRestore(M6502::O6);
 
   setOperationAction(ISD::CTPOP, MVT::i32,
                      Subtarget->usePopc() ? Legal : Expand);
@@ -1904,7 +1904,7 @@ SDValue Mos6502TargetLowering::LowerGlobalTLSAddress(SDValue Op,
     SDValue InFlag;
 
     Chain = DAG.getCALLSEQ_START(Chain, DAG.getIntPtrConstant(1, DL, true), DL);
-    Chain = DAG.getCopyToReg(Chain, DL, SP::O0, Argument, InFlag);
+    Chain = DAG.getCopyToReg(Chain, DL, M6502::O0, Argument, InFlag);
     InFlag = Chain.getValue(1);
     SDValue Callee = DAG.getTargetExternalSymbol("__tls_get_addr", PtrVT);
     SDValue Symbol = withTargetFlags(Op, callTF, DAG);
@@ -1914,7 +1914,7 @@ SDValue Mos6502TargetLowering::LowerGlobalTLSAddress(SDValue Op,
     Ops.push_back(Chain);
     Ops.push_back(Callee);
     Ops.push_back(Symbol);
-    Ops.push_back(DAG.getRegister(SP::O0, PtrVT));
+    Ops.push_back(DAG.getRegister(M6502::O0, PtrVT));
     const uint32_t *Mask = Subtarget->getRegisterInfo()->getCallPreservedMask(
         DAG.getMachineFunction(), CallingConv::C);
     assert(Mask && "Missing call preserved mask for calling convention");
@@ -1925,7 +1925,7 @@ SDValue Mos6502TargetLowering::LowerGlobalTLSAddress(SDValue Op,
     Chain = DAG.getCALLSEQ_END(Chain, DAG.getIntPtrConstant(1, DL, true),
                                DAG.getIntPtrConstant(0, DL, true), InFlag, DL);
     InFlag = Chain.getValue(1);
-    SDValue Ret = DAG.getCopyFromReg(Chain, DL, SP::O0, PtrVT, InFlag);
+    SDValue Ret = DAG.getCopyFromReg(Chain, DL, M6502::O0, PtrVT, InFlag);
 
     if (model != TLSModel::LocalDynamic)
       return Ret;
@@ -1958,7 +1958,7 @@ SDValue Mos6502TargetLowering::LowerGlobalTLSAddress(SDValue Op,
                                  DL, PtrVT, Ptr,
                                  withTargetFlags(Op, ldTF, DAG));
     return DAG.getNode(SPISD::TLS_ADD, DL, PtrVT,
-                       DAG.getRegister(SP::G7, PtrVT), Offset,
+                       DAG.getRegister(M6502::G7, PtrVT), Offset,
                        withTargetFlags(Op,
                                        Mos6502MCExpr::VK_Mos6502_TLS_IE_ADD, DAG));
   }
@@ -1971,7 +1971,7 @@ SDValue Mos6502TargetLowering::LowerGlobalTLSAddress(SDValue Op,
   SDValue Offset =  DAG.getNode(ISD::XOR, DL, PtrVT, Hi, Lo);
 
   return DAG.getNode(ISD::ADD, DL, PtrVT,
-                     DAG.getRegister(SP::G7, PtrVT), Offset);
+                     DAG.getRegister(M6502::G7, PtrVT), Offset);
 }
 
 SDValue
@@ -2379,7 +2379,7 @@ static SDValue LowerVASTART(SDValue Op, SelectionDAG &DAG,
   // memory location argument.
   SDLoc DL(Op);
   SDValue Offset =
-      DAG.getNode(ISD::ADD, DL, PtrVT, DAG.getRegister(SP::I6, PtrVT),
+      DAG.getNode(ISD::ADD, DL, PtrVT, DAG.getRegister(M6502::I6, PtrVT),
                   DAG.getIntPtrConstant(FuncInfo->getVarArgsFrameOffset(), DL));
   const Value *SV = cast<SrcValueSDNode>(Op.getOperand(2))->getValue();
   return DAG.getStore(Op.getOperand(0), DL, Offset, Op.getOperand(1),
@@ -2417,7 +2417,7 @@ static SDValue LowerDYNAMIC_STACKALLOC(SDValue Op, SelectionDAG &DAG,
   EVT VT = Size->getValueType(0);
   SDLoc dl(Op);
 
-  unsigned SPReg = SP::O6;
+  unsigned SPReg = M6502::O6;
   SDValue SP = DAG.getCopyFromReg(Chain, dl, SPReg, VT);
   SDValue NewSP = DAG.getNode(ISD::SUB, dl, VT, SP, Size); // Value
   Chain = DAG.getCopyToReg(SP.getValue(1), dl, SPReg, NewSP);    // Output chain
@@ -2448,7 +2448,7 @@ static SDValue getFRAMEADDR(uint64_t depth, SDValue Op, SelectionDAG &DAG,
 
   EVT VT = Op.getValueType();
   SDLoc dl(Op);
-  unsigned FrameReg = SP::I6;
+  unsigned FrameReg = M6502::I6;
   unsigned stackBias = Subtarget->getStackPointerBias();
 
   SDValue FrameAddr;
@@ -2506,7 +2506,7 @@ static SDValue LowerRETURNADDR(SDValue Op, SelectionDAG &DAG,
   SDValue RetAddr;
   if (depth == 0) {
     auto PtrVT = TLI.getPointerTy(DAG.getDataLayout());
-    unsigned RetReg = MF.addLiveIn(SP::I7, TLI.getRegClassFor(PtrVT));
+    unsigned RetReg = MF.addLiveIn(M6502::I7, TLI.getRegClassFor(PtrVT));
     RetAddr = DAG.getCopyFromReg(DAG.getEntryNode(), dl, RetReg, VT);
     return RetAddr;
   }
@@ -2537,18 +2537,18 @@ static SDValue LowerF64Op(SDValue Op, SelectionDAG &DAG, unsigned opcode)
   // fabs f64 => fabs f32:sub_even, fmov f32:sub_odd.
 
   SDValue SrcReg64 = Op.getOperand(0);
-  SDValue Hi32 = DAG.getTargetExtractSubreg(SP::sub_even, dl, MVT::f32,
+  SDValue Hi32 = DAG.getTargetExtractSubreg(M6502::sub_even, dl, MVT::f32,
                                             SrcReg64);
-  SDValue Lo32 = DAG.getTargetExtractSubreg(SP::sub_odd, dl, MVT::f32,
+  SDValue Lo32 = DAG.getTargetExtractSubreg(M6502::sub_odd, dl, MVT::f32,
                                             SrcReg64);
 
   Hi32 = DAG.getNode(opcode, dl, MVT::f32, Hi32);
 
   SDValue DstReg64 = SDValue(DAG.getMachineNode(TargetOpcode::IMPLICIT_DEF,
                                                 dl, MVT::f64), 0);
-  DstReg64 = DAG.getTargetInsertSubreg(SP::sub_even, dl, MVT::f64,
+  DstReg64 = DAG.getTargetInsertSubreg(M6502::sub_even, dl, MVT::f64,
                                        DstReg64, Hi32);
-  DstReg64 = DAG.getTargetInsertSubreg(SP::sub_odd, dl, MVT::f64,
+  DstReg64 = DAG.getTargetInsertSubreg(M6502::sub_odd, dl, MVT::f64,
                                        DstReg64, Lo32);
   return DstReg64;
 }
@@ -2582,8 +2582,8 @@ static SDValue LowerF128Load(SDValue Op, SelectionDAG &DAG)
                              LdNode->getPointerInfo(),
                              false, false, false, alignment);
 
-  SDValue SubRegEven = DAG.getTargetConstant(SP::sub_even64, dl, MVT::i32);
-  SDValue SubRegOdd  = DAG.getTargetConstant(SP::sub_odd64, dl, MVT::i32);
+  SDValue SubRegEven = DAG.getTargetConstant(M6502::sub_even64, dl, MVT::i32);
+  SDValue SubRegOdd  = DAG.getTargetConstant(M6502::sub_odd64, dl, MVT::i32);
 
   SDNode *InFP128 = DAG.getMachineNode(TargetOpcode::IMPLICIT_DEF,
                                        dl, MVT::f128);
@@ -2610,8 +2610,8 @@ static SDValue LowerF128Store(SDValue Op, SelectionDAG &DAG) {
   StoreSDNode *StNode = dyn_cast<StoreSDNode>(Op.getNode());
   assert(StNode && StNode->getOffset().getOpcode() == ISD::UNDEF
          && "Unexpected node type");
-  SDValue SubRegEven = DAG.getTargetConstant(SP::sub_even64, dl, MVT::i32);
-  SDValue SubRegOdd  = DAG.getTargetConstant(SP::sub_odd64, dl, MVT::i32);
+  SDValue SubRegEven = DAG.getTargetConstant(M6502::sub_even64, dl, MVT::i32);
+  SDValue SubRegOdd  = DAG.getTargetConstant(M6502::sub_odd64, dl, MVT::i32);
 
   SDNode *Hi64 = DAG.getMachineNode(TargetOpcode::EXTRACT_SUBREG,
                                     dl,
@@ -2662,9 +2662,9 @@ static SDValue LowerFNEGorFABS(SDValue Op, SelectionDAG &DAG, bool isV9) {
 
   SDLoc dl(Op);
   SDValue SrcReg128 = Op.getOperand(0);
-  SDValue Hi64 = DAG.getTargetExtractSubreg(SP::sub_even64, dl, MVT::f64,
+  SDValue Hi64 = DAG.getTargetExtractSubreg(M6502::sub_even64, dl, MVT::f64,
                                             SrcReg128);
-  SDValue Lo64 = DAG.getTargetExtractSubreg(SP::sub_odd64, dl, MVT::f64,
+  SDValue Lo64 = DAG.getTargetExtractSubreg(M6502::sub_odd64, dl, MVT::f64,
                                             SrcReg128);
   if (isV9)
     Hi64 = DAG.getNode(Op.getOpcode(), dl, MVT::f64, Hi64);
@@ -2673,9 +2673,9 @@ static SDValue LowerFNEGorFABS(SDValue Op, SelectionDAG &DAG, bool isV9) {
 
   SDValue DstReg128 = SDValue(DAG.getMachineNode(TargetOpcode::IMPLICIT_DEF,
                                                  dl, MVT::f128), 0);
-  DstReg128 = DAG.getTargetInsertSubreg(SP::sub_even64, dl, MVT::f128,
+  DstReg128 = DAG.getTargetInsertSubreg(M6502::sub_even64, dl, MVT::f128,
                                         DstReg128, Hi64);
-  DstReg128 = DAG.getTargetInsertSubreg(SP::sub_odd64, dl, MVT::f128,
+  DstReg128 = DAG.getTargetInsertSubreg(M6502::sub_odd64, dl, MVT::f128,
                                         DstReg128, Lo64);
   return DstReg128;
 }
@@ -2853,61 +2853,61 @@ Mos6502TargetLowering::EmitInstrWithCustomInserter(MachineInstr *MI,
                                                  MachineBasicBlock *BB) const {
   switch (MI->getOpcode()) {
   default: llvm_unreachable("Unknown SELECT_CC!");
-  case SP::SELECT_CC_Int_ICC:
-  case SP::SELECT_CC_FP_ICC:
-  case SP::SELECT_CC_DFP_ICC:
-  case SP::SELECT_CC_QFP_ICC:
-    return expandSelectCC(MI, BB, SP::BCOND);
-  case SP::SELECT_CC_Int_FCC:
-  case SP::SELECT_CC_FP_FCC:
-  case SP::SELECT_CC_DFP_FCC:
-  case SP::SELECT_CC_QFP_FCC:
-    return expandSelectCC(MI, BB, SP::FBCOND);
+  case M6502::SELECT_CC_Int_ICC:
+  case M6502::SELECT_CC_FP_ICC:
+  case M6502::SELECT_CC_DFP_ICC:
+  case M6502::SELECT_CC_QFP_ICC:
+    return expandSelectCC(MI, BB, M6502::BCOND);
+  case M6502::SELECT_CC_Int_FCC:
+  case M6502::SELECT_CC_FP_FCC:
+  case M6502::SELECT_CC_DFP_FCC:
+  case M6502::SELECT_CC_QFP_FCC:
+    return expandSelectCC(MI, BB, M6502::FBCOND);
 
-  case SP::ATOMIC_LOAD_ADD_32:
-    return expandAtomicRMW(MI, BB, SP::ADDrr);
-  case SP::ATOMIC_LOAD_ADD_64:
-    return expandAtomicRMW(MI, BB, SP::ADDXrr);
-  case SP::ATOMIC_LOAD_SUB_32:
-    return expandAtomicRMW(MI, BB, SP::SUBrr);
-  case SP::ATOMIC_LOAD_SUB_64:
-    return expandAtomicRMW(MI, BB, SP::SUBXrr);
-  case SP::ATOMIC_LOAD_AND_32:
-    return expandAtomicRMW(MI, BB, SP::ANDrr);
-  case SP::ATOMIC_LOAD_AND_64:
-    return expandAtomicRMW(MI, BB, SP::ANDXrr);
-  case SP::ATOMIC_LOAD_OR_32:
-    return expandAtomicRMW(MI, BB, SP::ORrr);
-  case SP::ATOMIC_LOAD_OR_64:
-    return expandAtomicRMW(MI, BB, SP::ORXrr);
-  case SP::ATOMIC_LOAD_XOR_32:
-    return expandAtomicRMW(MI, BB, SP::XORrr);
-  case SP::ATOMIC_LOAD_XOR_64:
-    return expandAtomicRMW(MI, BB, SP::XORXrr);
-  case SP::ATOMIC_LOAD_NAND_32:
-    return expandAtomicRMW(MI, BB, SP::ANDrr);
-  case SP::ATOMIC_LOAD_NAND_64:
-    return expandAtomicRMW(MI, BB, SP::ANDXrr);
+  case M6502::ATOMIC_LOAD_ADD_32:
+    return expandAtomicRMW(MI, BB, M6502::ADDrr);
+  case M6502::ATOMIC_LOAD_ADD_64:
+    return expandAtomicRMW(MI, BB, M6502::ADDXrr);
+  case M6502::ATOMIC_LOAD_SUB_32:
+    return expandAtomicRMW(MI, BB, M6502::SUBrr);
+  case M6502::ATOMIC_LOAD_SUB_64:
+    return expandAtomicRMW(MI, BB, M6502::SUBXrr);
+  case M6502::ATOMIC_LOAD_AND_32:
+    return expandAtomicRMW(MI, BB, M6502::ANDrr);
+  case M6502::ATOMIC_LOAD_AND_64:
+    return expandAtomicRMW(MI, BB, M6502::ANDXrr);
+  case M6502::ATOMIC_LOAD_OR_32:
+    return expandAtomicRMW(MI, BB, M6502::ORrr);
+  case M6502::ATOMIC_LOAD_OR_64:
+    return expandAtomicRMW(MI, BB, M6502::ORXrr);
+  case M6502::ATOMIC_LOAD_XOR_32:
+    return expandAtomicRMW(MI, BB, M6502::XORrr);
+  case M6502::ATOMIC_LOAD_XOR_64:
+    return expandAtomicRMW(MI, BB, M6502::XORXrr);
+  case M6502::ATOMIC_LOAD_NAND_32:
+    return expandAtomicRMW(MI, BB, M6502::ANDrr);
+  case M6502::ATOMIC_LOAD_NAND_64:
+    return expandAtomicRMW(MI, BB, M6502::ANDXrr);
 
-  case SP::ATOMIC_SWAP_64:
+  case M6502::ATOMIC_SWAP_64:
     return expandAtomicRMW(MI, BB, 0);
 
-  case SP::ATOMIC_LOAD_MAX_32:
-    return expandAtomicRMW(MI, BB, SP::MOVICCrr, SPCC::ICC_G);
-  case SP::ATOMIC_LOAD_MAX_64:
-    return expandAtomicRMW(MI, BB, SP::MOVXCCrr, SPCC::ICC_G);
-  case SP::ATOMIC_LOAD_MIN_32:
-    return expandAtomicRMW(MI, BB, SP::MOVICCrr, SPCC::ICC_LE);
-  case SP::ATOMIC_LOAD_MIN_64:
-    return expandAtomicRMW(MI, BB, SP::MOVXCCrr, SPCC::ICC_LE);
-  case SP::ATOMIC_LOAD_UMAX_32:
-    return expandAtomicRMW(MI, BB, SP::MOVICCrr, SPCC::ICC_GU);
-  case SP::ATOMIC_LOAD_UMAX_64:
-    return expandAtomicRMW(MI, BB, SP::MOVXCCrr, SPCC::ICC_GU);
-  case SP::ATOMIC_LOAD_UMIN_32:
-    return expandAtomicRMW(MI, BB, SP::MOVICCrr, SPCC::ICC_LEU);
-  case SP::ATOMIC_LOAD_UMIN_64:
-    return expandAtomicRMW(MI, BB, SP::MOVXCCrr, SPCC::ICC_LEU);
+  case M6502::ATOMIC_LOAD_MAX_32:
+    return expandAtomicRMW(MI, BB, M6502::MOVICCrr, SPCC::ICC_G);
+  case M6502::ATOMIC_LOAD_MAX_64:
+    return expandAtomicRMW(MI, BB, M6502::MOVXCCrr, SPCC::ICC_G);
+  case M6502::ATOMIC_LOAD_MIN_32:
+    return expandAtomicRMW(MI, BB, M6502::MOVICCrr, SPCC::ICC_LE);
+  case M6502::ATOMIC_LOAD_MIN_64:
+    return expandAtomicRMW(MI, BB, M6502::MOVXCCrr, SPCC::ICC_LE);
+  case M6502::ATOMIC_LOAD_UMAX_32:
+    return expandAtomicRMW(MI, BB, M6502::MOVICCrr, SPCC::ICC_GU);
+  case M6502::ATOMIC_LOAD_UMAX_64:
+    return expandAtomicRMW(MI, BB, M6502::MOVXCCrr, SPCC::ICC_GU);
+  case M6502::ATOMIC_LOAD_UMIN_32:
+    return expandAtomicRMW(MI, BB, M6502::MOVICCrr, SPCC::ICC_LEU);
+  case M6502::ATOMIC_LOAD_UMIN_64:
+    return expandAtomicRMW(MI, BB, M6502::MOVXCCrr, SPCC::ICC_LEU);
   }
 }
 
@@ -2963,7 +2963,7 @@ Mos6502TargetLowering::expandSelectCC(MachineInstr *MI,
   //   %Result = phi [ %FalseValue, copy0MBB ], [ %TrueValue, thisMBB ]
   //  ...
   BB = sinkMBB;
-  BuildMI(*BB, BB->begin(), dl, TII.get(SP::PHI), MI->getOperand(0).getReg())
+  BuildMI(*BB, BB->begin(), dl, TII.get(M6502::PHI), MI->getOperand(0).getReg())
     .addReg(MI->getOperand(2).getReg()).addMBB(copy0MBB)
     .addReg(MI->getOperand(1).getReg()).addMBB(thisMBB);
 
@@ -3001,12 +3001,12 @@ Mos6502TargetLowering::expandAtomicRMW(MachineInstr *MI,
   //   bne loop
   // done:
   //
-  bool is64Bit = SP::I64RegsRegClass.hasSubClassEq(MRI.getRegClass(DestReg));
+  bool is64Bit = M6502::I64RegsRegClass.hasSubClassEq(MRI.getRegClass(DestReg));
   const TargetRegisterClass *ValueRC =
-    is64Bit ? &SP::I64RegsRegClass : &SP::IntRegsRegClass;
+    is64Bit ? &M6502::I64RegsRegClass : &M6502::IntRegsRegClass;
   unsigned Val0Reg = MRI.createVirtualRegister(ValueRC);
 
-  BuildMI(*MBB, MI, DL, TII.get(is64Bit ? SP::LDXri : SP::LDri), Val0Reg)
+  BuildMI(*MBB, MI, DL, TII.get(is64Bit ? M6502::LDXri : M6502::LDri), Val0Reg)
     .addReg(AddrReg).addImm(0);
 
   // Split the basic block MBB before MI and insert the loop block in the hole.
@@ -3033,14 +3033,14 @@ Mos6502TargetLowering::expandAtomicRMW(MachineInstr *MI,
   // Opcode == 0 means try to write Rs2Reg directly (ATOMIC_SWAP).
   unsigned UpdReg = (Opcode ? MRI.createVirtualRegister(ValueRC) : Rs2Reg);
 
-  BuildMI(LoopMBB, DL, TII.get(SP::PHI), ValReg)
+  BuildMI(LoopMBB, DL, TII.get(M6502::PHI), ValReg)
     .addReg(Val0Reg).addMBB(MBB)
     .addReg(DestReg).addMBB(LoopMBB);
 
   if (CondCode) {
     // This is one of the min/max operations. We need a CMPrr followed by a
     // MOVXCC/MOVICC.
-    BuildMI(LoopMBB, DL, TII.get(SP::CMPrr)).addReg(ValReg).addReg(Rs2Reg);
+    BuildMI(LoopMBB, DL, TII.get(M6502::CMPrr)).addReg(ValReg).addReg(Rs2Reg);
     BuildMI(LoopMBB, DL, TII.get(Opcode), UpdReg)
       .addReg(ValReg).addReg(Rs2Reg).addImm(CondCode);
   } else if (Opcode) {
@@ -3048,18 +3048,18 @@ Mos6502TargetLowering::expandAtomicRMW(MachineInstr *MI,
       .addReg(ValReg).addReg(Rs2Reg);
   }
 
-  if (MI->getOpcode() == SP::ATOMIC_LOAD_NAND_32 ||
-      MI->getOpcode() == SP::ATOMIC_LOAD_NAND_64) {
+  if (MI->getOpcode() == M6502::ATOMIC_LOAD_NAND_32 ||
+      MI->getOpcode() == M6502::ATOMIC_LOAD_NAND_64) {
     unsigned TmpReg = UpdReg;
     UpdReg = MRI.createVirtualRegister(ValueRC);
-    BuildMI(LoopMBB, DL, TII.get(SP::XORri), UpdReg).addReg(TmpReg).addImm(-1);
+    BuildMI(LoopMBB, DL, TII.get(M6502::XORri), UpdReg).addReg(TmpReg).addImm(-1);
   }
 
-  BuildMI(LoopMBB, DL, TII.get(is64Bit ? SP::CASXrr : SP::CASrr), DestReg)
+  BuildMI(LoopMBB, DL, TII.get(is64Bit ? M6502::CASXrr : M6502::CASrr), DestReg)
     .addReg(AddrReg).addReg(ValReg).addReg(UpdReg)
     .setMemRefs(MI->memoperands_begin(), MI->memoperands_end());
-  BuildMI(LoopMBB, DL, TII.get(SP::CMPrr)).addReg(ValReg).addReg(DestReg);
-  BuildMI(LoopMBB, DL, TII.get(is64Bit ? SP::BPXCC : SP::BCOND))
+  BuildMI(LoopMBB, DL, TII.get(M6502::CMPrr)).addReg(ValReg).addReg(DestReg);
+  BuildMI(LoopMBB, DL, TII.get(is64Bit ? M6502::BPXCC : M6502::BCOND))
     .addMBB(LoopMBB).addImm(SPCC::ICC_NE);
 
   MI->eraseFromParent();
@@ -3152,7 +3152,7 @@ Mos6502TargetLowering::getRegForInlineAsmConstraint(const TargetRegisterInfo *TR
   if (Constraint.size() == 1) {
     switch (Constraint[0]) {
     case 'r':
-      return std::make_pair(0U, &SP::IntRegsRegClass);
+      return std::make_pair(0U, &M6502::IntRegsRegClass);
     }
   } else  if (!Constraint.empty() && Constraint.size() <= 5
               && Constraint[0] == '{' && *(Constraint.end()-1) == '}') {

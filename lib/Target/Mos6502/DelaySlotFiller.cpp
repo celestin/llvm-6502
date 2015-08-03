@@ -116,16 +116,16 @@ bool Filler::runOnMachineBasicBlock(MachineBasicBlock &MBB) {
 
     // If MI is restore, try combining it with previous inst.
     if (!DisableDelaySlotFiller &&
-        (MI->getOpcode() == SP::RESTORErr
-         || MI->getOpcode() == SP::RESTOREri)) {
+        (MI->getOpcode() == M6502::RESTORErr
+         || MI->getOpcode() == M6502::RESTOREri)) {
       Changed |= tryCombineRestoreWithPrevInst(MBB, MI);
       continue;
     }
 
     if (!Subtarget->isV9() &&
-        (MI->getOpcode() == SP::FCMPS || MI->getOpcode() == SP::FCMPD
-         || MI->getOpcode() == SP::FCMPQ)) {
-      BuildMI(MBB, I, MI->getDebugLoc(), TII->get(SP::NOP));
+        (MI->getOpcode() == M6502::FCMPS || MI->getOpcode() == M6502::FCMPD
+         || MI->getOpcode() == M6502::FCMPQ)) {
+      BuildMI(MBB, I, MI->getDebugLoc(), TII->get(M6502::NOP));
       Changed = true;
       continue;
     }
@@ -143,7 +143,7 @@ bool Filler::runOnMachineBasicBlock(MachineBasicBlock &MBB) {
     Changed = true;
 
     if (D == MBB.end())
-      BuildMI(MBB, I, MI->getDebugLoc(), TII->get(SP::NOP));
+      BuildMI(MBB, I, MI->getDebugLoc(), TII->get(M6502::NOP));
     else
       MBB.splice(I, &MBB, D);
 
@@ -153,7 +153,7 @@ bool Filler::runOnMachineBasicBlock(MachineBasicBlock &MBB) {
       ++J; // skip the delay filler.
       assert (J != MBB.end() && "MI needs a delay instruction.");
       BuildMI(MBB, ++J, MI->getDebugLoc(),
-              TII->get(SP::UNIMP)).addImm(structSize);
+              TII->get(M6502::UNIMP)).addImm(structSize);
       // Bundle the delay filler and unimp with the instruction.
       MIBundleBuilder(MBB, MachineBasicBlock::iterator(MI), J);
     } else {
@@ -175,17 +175,17 @@ Filler::findDelayInstr(MachineBasicBlock &MBB,
   if (slot == MBB.begin())
     return MBB.end();
 
-  if (slot->getOpcode() == SP::RET || slot->getOpcode() == SP::TLS_CALL)
+  if (slot->getOpcode() == M6502::RET || slot->getOpcode() == M6502::TLS_CALL)
     return MBB.end();
 
-  if (slot->getOpcode() == SP::RETL) {
+  if (slot->getOpcode() == M6502::RETL) {
     MachineBasicBlock::iterator J = slot;
     --J;
 
-    if (J->getOpcode() == SP::RESTORErr
-        || J->getOpcode() == SP::RESTOREri) {
+    if (J->getOpcode() == M6502::RESTORErr
+        || J->getOpcode() == M6502::RESTOREri) {
       // change retl to ret.
-      slot->setDesc(Subtarget->getInstrInfo()->get(SP::RET));
+      slot->setDesc(Subtarget->getInstrInfo()->get(M6502::RET));
       return J;
     }
   }
@@ -275,13 +275,13 @@ void Filler::insertCallDefsUses(MachineBasicBlock::iterator MI,
                                 SmallSet<unsigned, 32>& RegUses)
 {
   // Call defines o7, which is visible to the instruction in delay slot.
-  RegDefs.insert(SP::O7);
+  RegDefs.insert(M6502::O7);
 
   switch(MI->getOpcode()) {
   default: llvm_unreachable("Unknown opcode.");
-  case SP::CALL: break;
-  case SP::CALLrr:
-  case SP::CALLri:
+  case M6502::CALL: break;
+  case M6502::CALLrr:
+  case M6502::CALLri:
     assert(MI->getNumOperands() >= 2);
     const MachineOperand &Reg = MI->getOperand(0);
     assert(Reg.isReg() && "CALL first operand is not a register.");
@@ -316,7 +316,7 @@ void Filler::insertDefsUses(MachineBasicBlock::iterator MI,
     if (MO.isUse()) {
       // Implicit register uses of retl are return values and
       // retl does not use them.
-      if (MO.isImplicit() && MI->getOpcode() == SP::RETL)
+      if (MO.isImplicit() && MI->getOpcode() == M6502::RETL)
         continue;
       RegUses.insert(Reg);
     }
@@ -342,10 +342,10 @@ bool Filler::needsUnimp(MachineBasicBlock::iterator I, unsigned &StructSize)
   unsigned structSizeOpNum = 0;
   switch (I->getOpcode()) {
   default: llvm_unreachable("Unknown call opcode.");
-  case SP::CALL: structSizeOpNum = 1; break;
-  case SP::CALLrr:
-  case SP::CALLri: structSizeOpNum = 2; break;
-  case SP::TLS_CALL: return false;
+  case M6502::CALL: structSizeOpNum = 1; break;
+  case M6502::CALLrr:
+  case M6502::CALLri: structSizeOpNum = 2; break;
+  case M6502::TLS_CALL: return false;
   }
 
   const MachineOperand &MO = I->getOperand(structSizeOpNum);
@@ -365,19 +365,19 @@ static bool combineRestoreADD(MachineBasicBlock::iterator RestoreMI,
   // After :  restore <op0>, <op1>, %o[0-7]
 
   unsigned reg = AddMI->getOperand(0).getReg();
-  if (reg < SP::I0 || reg > SP::I7)
+  if (reg < M6502::I0 || reg > M6502::I7)
     return false;
 
   // Erase RESTORE.
   RestoreMI->eraseFromParent();
 
   // Change ADD to RESTORE.
-  AddMI->setDesc(TII->get((AddMI->getOpcode() == SP::ADDrr)
-                          ? SP::RESTORErr
-                          : SP::RESTOREri));
+  AddMI->setDesc(TII->get((AddMI->getOpcode() == M6502::ADDrr)
+                          ? M6502::RESTORErr
+                          : M6502::RESTOREri));
 
   // Map the destination register.
-  AddMI->getOperand(0).setReg(reg - SP::I0 + SP::O0);
+  AddMI->getOperand(0).setReg(reg - M6502::I0 + M6502::O0);
 
   return true;
 }
@@ -393,17 +393,17 @@ static bool combineRestoreOR(MachineBasicBlock::iterator RestoreMI,
   // After :  restore <op0>, <op1>, %o[0-7]
 
   unsigned reg = OrMI->getOperand(0).getReg();
-  if (reg < SP::I0 || reg > SP::I7)
+  if (reg < M6502::I0 || reg > M6502::I7)
     return false;
 
   // check whether it is a copy.
-  if (OrMI->getOpcode() == SP::ORrr
-      && OrMI->getOperand(1).getReg() != SP::G0
-      && OrMI->getOperand(2).getReg() != SP::G0)
+  if (OrMI->getOpcode() == M6502::ORrr
+      && OrMI->getOperand(1).getReg() != M6502::G0
+      && OrMI->getOperand(2).getReg() != M6502::G0)
     return false;
 
-  if (OrMI->getOpcode() == SP::ORri
-      && OrMI->getOperand(1).getReg() != SP::G0
+  if (OrMI->getOpcode() == M6502::ORri
+      && OrMI->getOperand(1).getReg() != M6502::G0
       && (!OrMI->getOperand(2).isImm() || OrMI->getOperand(2).getImm() != 0))
     return false;
 
@@ -411,12 +411,12 @@ static bool combineRestoreOR(MachineBasicBlock::iterator RestoreMI,
   RestoreMI->eraseFromParent();
 
   // Change OR to RESTORE.
-  OrMI->setDesc(TII->get((OrMI->getOpcode() == SP::ORrr)
-                         ? SP::RESTORErr
-                         : SP::RESTOREri));
+  OrMI->setDesc(TII->get((OrMI->getOpcode() == M6502::ORrr)
+                         ? M6502::RESTORErr
+                         : M6502::RESTOREri));
 
   // Map the destination register.
-  OrMI->getOperand(0).setReg(reg - SP::I0 + SP::O0);
+  OrMI->getOperand(0).setReg(reg - M6502::I0 + M6502::O0);
 
   return true;
 }
@@ -431,7 +431,7 @@ static bool combineRestoreSETHIi(MachineBasicBlock::iterator RestoreMI,
   // After :  restore %g0, (imm3<<10), %o[0-7]
 
   unsigned reg = SetHiMI->getOperand(0).getReg();
-  if (reg < SP::I0 || reg > SP::I7)
+  if (reg < M6502::I0 || reg > M6502::I7)
     return false;
 
   if (!SetHiMI->getOperand(1).isImm())
@@ -446,12 +446,12 @@ static bool combineRestoreSETHIi(MachineBasicBlock::iterator RestoreMI,
   // Make it a 13 bit immediate.
   imm = (imm << 10) & 0x1FFF;
 
-  assert(RestoreMI->getOpcode() == SP::RESTORErr);
+  assert(RestoreMI->getOpcode() == M6502::RESTORErr);
 
-  RestoreMI->setDesc(TII->get(SP::RESTOREri));
+  RestoreMI->setDesc(TII->get(M6502::RESTOREri));
 
-  RestoreMI->getOperand(0).setReg(reg - SP::I0 + SP::O0);
-  RestoreMI->getOperand(1).setReg(SP::G0);
+  RestoreMI->getOperand(0).setReg(reg - M6502::I0 + M6502::O0);
+  RestoreMI->getOperand(1).setReg(M6502::G0);
   RestoreMI->getOperand(2).ChangeToImmediate(imm);
 
 
@@ -469,10 +469,10 @@ bool Filler::tryCombineRestoreWithPrevInst(MachineBasicBlock &MBB,
     return false;
 
   // assert that MBBI is a "restore %g0, %g0, %g0".
-  assert(MBBI->getOpcode() == SP::RESTORErr
-         && MBBI->getOperand(0).getReg() == SP::G0
-         && MBBI->getOperand(1).getReg() == SP::G0
-         && MBBI->getOperand(2).getReg() == SP::G0);
+  assert(MBBI->getOpcode() == M6502::RESTORErr
+         && MBBI->getOperand(0).getReg() == M6502::G0
+         && MBBI->getOperand(1).getReg() == M6502::G0
+         && MBBI->getOperand(2).getReg() == M6502::G0);
 
   MachineBasicBlock::iterator PrevInst = std::prev(MBBI);
 
@@ -484,11 +484,11 @@ bool Filler::tryCombineRestoreWithPrevInst(MachineBasicBlock &MBB,
 
   switch (PrevInst->getOpcode()) {
   default: break;
-  case SP::ADDrr:
-  case SP::ADDri: return combineRestoreADD(MBBI, PrevInst, TII); break;
-  case SP::ORrr:
-  case SP::ORri:  return combineRestoreOR(MBBI, PrevInst, TII); break;
-  case SP::SETHIi: return combineRestoreSETHIi(MBBI, PrevInst, TII); break;
+  case M6502::ADDrr:
+  case M6502::ADDri: return combineRestoreADD(MBBI, PrevInst, TII); break;
+  case M6502::ORrr:
+  case M6502::ORri:  return combineRestoreOR(MBBI, PrevInst, TII); break;
+  case M6502::SETHIi: return combineRestoreSETHIi(MBBI, PrevInst, TII); break;
   }
   // It cannot combine with the previous instruction.
   return false;

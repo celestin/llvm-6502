@@ -33,7 +33,7 @@ using namespace llvm;
 void Mos6502InstrInfo::anchor() {}
 
 Mos6502InstrInfo::Mos6502InstrInfo(Mos6502Subtarget &ST)
-    : Mos6502GenInstrInfo(SP::ADJCALLSTACKDOWN, SP::ADJCALLSTACKUP), RI(),
+    : Mos6502GenInstrInfo(M6502::ADJCALLSTACKDOWN, M6502::ADJCALLSTACKUP), RI(),
       Subtarget(ST) {}
 
 /// isLoadFromStackSlot - If the specified machine instruction is a direct
@@ -43,11 +43,11 @@ Mos6502InstrInfo::Mos6502InstrInfo(Mos6502Subtarget &ST)
 /// any side effects other than loading from the stack slot.
 unsigned Mos6502InstrInfo::isLoadFromStackSlot(const MachineInstr *MI,
                                              int &FrameIndex) const {
-  if (MI->getOpcode() == SP::LDri ||
-      MI->getOpcode() == SP::LDXri ||
-      MI->getOpcode() == SP::LDFri ||
-      MI->getOpcode() == SP::LDDFri ||
-      MI->getOpcode() == SP::LDQFri) {
+  if (MI->getOpcode() == M6502::LDri ||
+      MI->getOpcode() == M6502::LDXri ||
+      MI->getOpcode() == M6502::LDFri ||
+      MI->getOpcode() == M6502::LDDFri ||
+      MI->getOpcode() == M6502::LDQFri) {
     if (MI->getOperand(1).isFI() && MI->getOperand(2).isImm() &&
         MI->getOperand(2).getImm() == 0) {
       FrameIndex = MI->getOperand(1).getIndex();
@@ -64,11 +64,11 @@ unsigned Mos6502InstrInfo::isLoadFromStackSlot(const MachineInstr *MI,
 /// any side effects other than storing to the stack slot.
 unsigned Mos6502InstrInfo::isStoreToStackSlot(const MachineInstr *MI,
                                             int &FrameIndex) const {
-  if (MI->getOpcode() == SP::STri ||
-      MI->getOpcode() == SP::STXri ||
-      MI->getOpcode() == SP::STFri ||
-      MI->getOpcode() == SP::STDFri ||
-      MI->getOpcode() == SP::STQFri) {
+  if (MI->getOpcode() == M6502::STri ||
+      MI->getOpcode() == M6502::STXri ||
+      MI->getOpcode() == M6502::STFri ||
+      MI->getOpcode() == M6502::STDFri ||
+      MI->getOpcode() == M6502::STQFri) {
     if (MI->getOperand(0).isFI() && MI->getOperand(1).isImm() &&
         MI->getOperand(1).getImm() == 0) {
       FrameIndex = MI->getOperand(0).getIndex();
@@ -148,7 +148,7 @@ bool Mos6502InstrInfo::AnalyzeBranch(MachineBasicBlock &MBB,
       return true;
 
     // Handle Unconditional branches.
-    if (I->getOpcode() == SP::BA) {
+    if (I->getOpcode() == M6502::BA) {
       UnCondBrIter = I;
 
       if (!AllowModify) {
@@ -175,7 +175,7 @@ bool Mos6502InstrInfo::AnalyzeBranch(MachineBasicBlock &MBB,
     }
 
     unsigned Opcode = I->getOpcode();
-    if (Opcode != SP::BCOND && Opcode != SP::FBCOND)
+    if (Opcode != M6502::BCOND && Opcode != M6502::FBCOND)
       return true; // Unknown Opcode.
 
     SPCC::CondCodes BranchCode = (SPCC::CondCodes)I->getOperand(1).getImm();
@@ -204,7 +204,7 @@ bool Mos6502InstrInfo::AnalyzeBranch(MachineBasicBlock &MBB,
         MachineBasicBlock::iterator OldInst = I;
         BuildMI(MBB, UnCondBrIter, MBB.findDebugLoc(I), get(Opcode))
           .addMBB(UnCondBrIter->getOperand(0).getMBB()).addImm(BranchCode);
-        BuildMI(MBB, UnCondBrIter, MBB.findDebugLoc(I), get(SP::BA))
+        BuildMI(MBB, UnCondBrIter, MBB.findDebugLoc(I), get(M6502::BA))
           .addMBB(TargetBB);
 
         OldInst->eraseFromParent();
@@ -237,7 +237,7 @@ Mos6502InstrInfo::InsertBranch(MachineBasicBlock &MBB,MachineBasicBlock *TBB,
 
   if (Cond.empty()) {
     assert(!FBB && "Unconditional branch with multiple successors!");
-    BuildMI(&MBB, DL, get(SP::BA)).addMBB(TBB);
+    BuildMI(&MBB, DL, get(M6502::BA)).addMBB(TBB);
     return 1;
   }
 
@@ -245,13 +245,13 @@ Mos6502InstrInfo::InsertBranch(MachineBasicBlock &MBB,MachineBasicBlock *TBB,
   unsigned CC = Cond[0].getImm();
 
   if (IsIntegerCC(CC))
-    BuildMI(&MBB, DL, get(SP::BCOND)).addMBB(TBB).addImm(CC);
+    BuildMI(&MBB, DL, get(M6502::BCOND)).addMBB(TBB).addImm(CC);
   else
-    BuildMI(&MBB, DL, get(SP::FBCOND)).addMBB(TBB).addImm(CC);
+    BuildMI(&MBB, DL, get(M6502::FBCOND)).addMBB(TBB).addImm(CC);
   if (!FBB)
     return 1;
 
-  BuildMI(&MBB, DL, get(SP::BA)).addMBB(FBB);
+  BuildMI(&MBB, DL, get(M6502::BA)).addMBB(FBB);
   return 2;
 }
 
@@ -265,9 +265,9 @@ unsigned Mos6502InstrInfo::RemoveBranch(MachineBasicBlock &MBB) const
     if (I->isDebugValue())
       continue;
 
-    if (I->getOpcode() != SP::BA
-        && I->getOpcode() != SP::BCOND
-        && I->getOpcode() != SP::FBCOND)
+    if (I->getOpcode() != M6502::BA
+        && I->getOpcode() != M6502::BCOND
+        && I->getOpcode() != M6502::FBCOND)
       break; // Not a branch
 
     I->eraseFromParent();
@@ -285,53 +285,53 @@ void Mos6502InstrInfo::copyPhysReg(MachineBasicBlock &MBB,
   unsigned movOpc     = 0;
   const unsigned *subRegIdx = nullptr;
 
-  const unsigned DFP_FP_SubRegsIdx[]  = { SP::sub_even, SP::sub_odd };
-  const unsigned QFP_DFP_SubRegsIdx[] = { SP::sub_even64, SP::sub_odd64 };
-  const unsigned QFP_FP_SubRegsIdx[]  = { SP::sub_even, SP::sub_odd,
-                                          SP::sub_odd64_then_sub_even,
-                                          SP::sub_odd64_then_sub_odd };
+  const unsigned DFP_FP_SubRegsIdx[]  = { M6502::sub_even, M6502::sub_odd };
+  const unsigned QFP_DFP_SubRegsIdx[] = { M6502::sub_even64, M6502::sub_odd64 };
+  const unsigned QFP_FP_SubRegsIdx[]  = { M6502::sub_even, M6502::sub_odd,
+                                          M6502::sub_odd64_then_sub_even,
+                                          M6502::sub_odd64_then_sub_odd };
 
-  if (SP::IntRegsRegClass.contains(DestReg, SrcReg))
-    BuildMI(MBB, I, DL, get(SP::ORrr), DestReg).addReg(SP::G0)
+  if (M6502::IntRegsRegClass.contains(DestReg, SrcReg))
+    BuildMI(MBB, I, DL, get(M6502::ORrr), DestReg).addReg(M6502::G0)
       .addReg(SrcReg, getKillRegState(KillSrc));
-  else if (SP::FPRegsRegClass.contains(DestReg, SrcReg))
-    BuildMI(MBB, I, DL, get(SP::FMOVS), DestReg)
+  else if (M6502::FPRegsRegClass.contains(DestReg, SrcReg))
+    BuildMI(MBB, I, DL, get(M6502::FMOVS), DestReg)
       .addReg(SrcReg, getKillRegState(KillSrc));
-  else if (SP::DFPRegsRegClass.contains(DestReg, SrcReg)) {
+  else if (M6502::DFPRegsRegClass.contains(DestReg, SrcReg)) {
     if (Subtarget.isV9()) {
-      BuildMI(MBB, I, DL, get(SP::FMOVD), DestReg)
+      BuildMI(MBB, I, DL, get(M6502::FMOVD), DestReg)
         .addReg(SrcReg, getKillRegState(KillSrc));
     } else {
       // Use two FMOVS instructions.
       subRegIdx  = DFP_FP_SubRegsIdx;
       numSubRegs = 2;
-      movOpc     = SP::FMOVS;
+      movOpc     = M6502::FMOVS;
     }
-  } else if (SP::QFPRegsRegClass.contains(DestReg, SrcReg)) {
+  } else if (M6502::QFPRegsRegClass.contains(DestReg, SrcReg)) {
     if (Subtarget.isV9()) {
       if (Subtarget.hasHardQuad()) {
-        BuildMI(MBB, I, DL, get(SP::FMOVQ), DestReg)
+        BuildMI(MBB, I, DL, get(M6502::FMOVQ), DestReg)
           .addReg(SrcReg, getKillRegState(KillSrc));
       } else {
         // Use two FMOVD instructions.
         subRegIdx  = QFP_DFP_SubRegsIdx;
         numSubRegs = 2;
-        movOpc     = SP::FMOVD;
+        movOpc     = M6502::FMOVD;
       }
     } else {
       // Use four FMOVS instructions.
       subRegIdx  = QFP_FP_SubRegsIdx;
       numSubRegs = 4;
-      movOpc     = SP::FMOVS;
+      movOpc     = M6502::FMOVS;
     }
-  } else if (SP::ASRRegsRegClass.contains(DestReg) &&
-             SP::IntRegsRegClass.contains(SrcReg)) {
-    BuildMI(MBB, I, DL, get(SP::WRASRrr), DestReg)
-        .addReg(SP::G0)
+  } else if (M6502::ASRRegsRegClass.contains(DestReg) &&
+             M6502::IntRegsRegClass.contains(SrcReg)) {
+    BuildMI(MBB, I, DL, get(M6502::WRASRrr), DestReg)
+        .addReg(M6502::G0)
         .addReg(SrcReg, getKillRegState(KillSrc));
-  } else if (SP::IntRegsRegClass.contains(DestReg) &&
-             SP::ASRRegsRegClass.contains(SrcReg)) {
-    BuildMI(MBB, I, DL, get(SP::RDASR), DestReg)
+  } else if (M6502::IntRegsRegClass.contains(DestReg) &&
+             M6502::ASRRegsRegClass.contains(SrcReg)) {
+    BuildMI(MBB, I, DL, get(M6502::RDASR), DestReg)
         .addReg(SrcReg, getKillRegState(KillSrc));
   } else
     llvm_unreachable("Impossible reg-to-reg copy");
@@ -372,22 +372,22 @@ storeRegToStackSlot(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
                              MFI.getObjectAlignment(FI));
 
   // On the order of operands here: think "[FrameIdx + 0] = SrcReg".
- if (RC == &SP::I64RegsRegClass)
-    BuildMI(MBB, I, DL, get(SP::STXri)).addFrameIndex(FI).addImm(0)
+ if (RC == &M6502::I64RegsRegClass)
+    BuildMI(MBB, I, DL, get(M6502::STXri)).addFrameIndex(FI).addImm(0)
       .addReg(SrcReg, getKillRegState(isKill)).addMemOperand(MMO);
-  else if (RC == &SP::IntRegsRegClass)
-    BuildMI(MBB, I, DL, get(SP::STri)).addFrameIndex(FI).addImm(0)
+  else if (RC == &M6502::IntRegsRegClass)
+    BuildMI(MBB, I, DL, get(M6502::STri)).addFrameIndex(FI).addImm(0)
       .addReg(SrcReg, getKillRegState(isKill)).addMemOperand(MMO);
-  else if (RC == &SP::FPRegsRegClass)
-    BuildMI(MBB, I, DL, get(SP::STFri)).addFrameIndex(FI).addImm(0)
+  else if (RC == &M6502::FPRegsRegClass)
+    BuildMI(MBB, I, DL, get(M6502::STFri)).addFrameIndex(FI).addImm(0)
       .addReg(SrcReg,  getKillRegState(isKill)).addMemOperand(MMO);
-  else if (SP::DFPRegsRegClass.hasSubClassEq(RC))
-    BuildMI(MBB, I, DL, get(SP::STDFri)).addFrameIndex(FI).addImm(0)
+  else if (M6502::DFPRegsRegClass.hasSubClassEq(RC))
+    BuildMI(MBB, I, DL, get(M6502::STDFri)).addFrameIndex(FI).addImm(0)
       .addReg(SrcReg,  getKillRegState(isKill)).addMemOperand(MMO);
-  else if (SP::QFPRegsRegClass.hasSubClassEq(RC))
+  else if (M6502::QFPRegsRegClass.hasSubClassEq(RC))
     // Use STQFri irrespective of its legality. If STQ is not legal, it will be
     // lowered into two STDs in eliminateFrameIndex.
-    BuildMI(MBB, I, DL, get(SP::STQFri)).addFrameIndex(FI).addImm(0)
+    BuildMI(MBB, I, DL, get(M6502::STQFri)).addFrameIndex(FI).addImm(0)
       .addReg(SrcReg,  getKillRegState(isKill)).addMemOperand(MMO);
   else
     llvm_unreachable("Can't store this register to stack slot");
@@ -409,22 +409,22 @@ loadRegFromStackSlot(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
                              MFI.getObjectSize(FI),
                              MFI.getObjectAlignment(FI));
 
-  if (RC == &SP::I64RegsRegClass)
-    BuildMI(MBB, I, DL, get(SP::LDXri), DestReg).addFrameIndex(FI).addImm(0)
+  if (RC == &M6502::I64RegsRegClass)
+    BuildMI(MBB, I, DL, get(M6502::LDXri), DestReg).addFrameIndex(FI).addImm(0)
       .addMemOperand(MMO);
-  else if (RC == &SP::IntRegsRegClass)
-    BuildMI(MBB, I, DL, get(SP::LDri), DestReg).addFrameIndex(FI).addImm(0)
+  else if (RC == &M6502::IntRegsRegClass)
+    BuildMI(MBB, I, DL, get(M6502::LDri), DestReg).addFrameIndex(FI).addImm(0)
       .addMemOperand(MMO);
-  else if (RC == &SP::FPRegsRegClass)
-    BuildMI(MBB, I, DL, get(SP::LDFri), DestReg).addFrameIndex(FI).addImm(0)
+  else if (RC == &M6502::FPRegsRegClass)
+    BuildMI(MBB, I, DL, get(M6502::LDFri), DestReg).addFrameIndex(FI).addImm(0)
       .addMemOperand(MMO);
-  else if (SP::DFPRegsRegClass.hasSubClassEq(RC))
-    BuildMI(MBB, I, DL, get(SP::LDDFri), DestReg).addFrameIndex(FI).addImm(0)
+  else if (M6502::DFPRegsRegClass.hasSubClassEq(RC))
+    BuildMI(MBB, I, DL, get(M6502::LDDFri), DestReg).addFrameIndex(FI).addImm(0)
       .addMemOperand(MMO);
-  else if (SP::QFPRegsRegClass.hasSubClassEq(RC))
+  else if (M6502::QFPRegsRegClass.hasSubClassEq(RC))
     // Use LDQFri irrespective of its legality. If LDQ is not legal, it will be
     // lowered into two LDDs in eliminateFrameIndex.
-    BuildMI(MBB, I, DL, get(SP::LDQFri), DestReg).addFrameIndex(FI).addImm(0)
+    BuildMI(MBB, I, DL, get(M6502::LDQFri), DestReg).addFrameIndex(FI).addImm(0)
       .addMemOperand(MMO);
   else
     llvm_unreachable("Can't load this register from stack slot");
@@ -443,12 +443,12 @@ unsigned Mos6502InstrInfo::getGlobalBaseReg(MachineFunction *MF) const
   MachineRegisterInfo &RegInfo = MF->getRegInfo();
 
   const TargetRegisterClass *PtrRC =
-    Subtarget.is64Bit() ? &SP::I64RegsRegClass : &SP::IntRegsRegClass;
+    Subtarget.is64Bit() ? &M6502::I64RegsRegClass : &M6502::IntRegsRegClass;
   GlobalBaseReg = RegInfo.createVirtualRegister(PtrRC);
 
   DebugLoc dl;
 
-  BuildMI(FirstMBB, MBBI, dl, get(SP::GETPCX), GlobalBaseReg);
+  BuildMI(FirstMBB, MBBI, dl, get(M6502::GETPCX), GlobalBaseReg);
   Mos6502FI->setGlobalBaseReg(GlobalBaseReg);
   return GlobalBaseReg;
 }
