@@ -1,9 +1,8 @@
 //===- SymbolSize.cpp -----------------------------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -16,19 +15,13 @@
 using namespace llvm;
 using namespace object;
 
-namespace {
-struct SymEntry {
-  symbol_iterator I;
-  uint64_t Address;
-  unsigned Number;
-  unsigned SectionID;
-};
-}
-
-static int compareAddress(const SymEntry *A, const SymEntry *B) {
+// Orders increasingly by (SectionID, Address).
+int llvm::object::compareAddress(const SymEntry *A, const SymEntry *B) {
   if (A->SectionID != B->SectionID)
-    return A->SectionID - B->SectionID;
-  return A->Address - B->Address;
+    return A->SectionID < B->SectionID ? -1 : 1;
+  if (A->Address != B->Address)
+    return A->Address < B->Address ? -1 : 1;
+  return 0;
 }
 
 static unsigned getSectionID(const ObjectFile &O, SectionRef Sec) {
@@ -72,6 +65,10 @@ llvm::object::computeSymbolSizes(const ObjectFile &O) {
     Addresses.push_back(
         {O.symbol_end(), Address + Size, 0, getSectionID(O, Sec)});
   }
+
+  if (Addresses.empty())
+    return Ret;
+
   array_pod_sort(Addresses.begin(), Addresses.end(), compareAddress);
 
   // Compute the size as the gap to the next symbol

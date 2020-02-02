@@ -1,9 +1,8 @@
 //===- PHITransAddr.h - PHI Translation for Addresses -----------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -43,11 +42,12 @@ class PHITransAddr {
   /// TLI - The target library info if known, otherwise null.
   const TargetLibraryInfo *TLI;
 
-  /// A cache of @llvm.assume calls used by SimplifyInstruction.
+  /// A cache of \@llvm.assume calls used by SimplifyInstruction.
   AssumptionCache *AC;
 
   /// InstInputs - The inputs for our symbolic address.
   SmallVector<Instruction*, 4> InstInputs;
+
 public:
   PHITransAddr(Value *addr, const DataLayout &DL, AssumptionCache *AC)
       : Addr(addr), DL(DL), TLI(nullptr), AC(AC) {
@@ -55,9 +55,9 @@ public:
     if (Instruction *I = dyn_cast<Instruction>(Addr))
       InstInputs.push_back(I);
   }
-  
+
   Value *getAddr() const { return Addr; }
-  
+
   /// NeedsPHITranslationFromBlock - Return true if moving from the specified
   /// BasicBlock to its predecessors requires PHI translation.
   bool NeedsPHITranslationFromBlock(BasicBlock *BB) const {
@@ -68,12 +68,12 @@ public:
         return true;
     return false;
   }
-  
+
   /// IsPotentiallyPHITranslatable - If this needs PHI translation, return true
   /// if we have some hope of doing it.  This should be used as a filter to
   /// avoid calling PHITranslateValue in hopeless situations.
   bool IsPotentiallyPHITranslatable() const;
-  
+
   /// PHITranslateValue - PHI translate the current address up the CFG from
   /// CurBB to Pred, updating our state to reflect any needed changes.  If
   /// 'MustDominate' is true, the translated value must dominate
@@ -90,18 +90,19 @@ public:
   ///
   Value *PHITranslateWithInsertion(BasicBlock *CurBB, BasicBlock *PredBB,
                                    const DominatorTree &DT,
-                                   SmallVectorImpl<Instruction*> &NewInsts);
-  
+                                   SmallVectorImpl<Instruction *> &NewInsts);
+
   void dump() const;
-  
+
   /// Verify - Check internal consistency of this data structure.  If the
   /// structure is valid, it returns true.  If invalid, it prints errors and
   /// returns false.
   bool Verify() const;
+
 private:
   Value *PHITranslateSubExpr(Value *V, BasicBlock *CurBB, BasicBlock *PredBB,
                              const DominatorTree *DT);
-  
+
   /// InsertPHITranslatedSubExpr - Insert a computation of the PHI translated
   /// version of 'V' for the edge PredBB->CurBB into the end of the PredBB
   /// block.  All newly created instructions are added to the NewInsts list.
@@ -109,8 +110,8 @@ private:
   ///
   Value *InsertPHITranslatedSubExpr(Value *InVal, BasicBlock *CurBB,
                                     BasicBlock *PredBB, const DominatorTree &DT,
-                                    SmallVectorImpl<Instruction*> &NewInsts);
-  
+                                    SmallVectorImpl<Instruction *> &NewInsts);
+
   /// AddAsInput - If the specified value is an instruction, add it as an input.
   Value *AddAsInput(Value *V) {
     // If V is an instruction, it is now an input.
@@ -118,7 +119,6 @@ private:
       InstInputs.push_back(VI);
     return V;
   }
-  
 };
 
 } // end namespace llvm

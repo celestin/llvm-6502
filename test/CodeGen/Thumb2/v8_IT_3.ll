@@ -35,7 +35,7 @@ bb:
   br i1 %tmp4, label %bb1, label %bb8
 
 bb1:
-; CHECK: %bb6
+; CHECK: %entry
 ; CHECK: it	eq
 ; CHECK-NEXT: ldreq
 ; CHECK-NEXT: it	eq
@@ -54,11 +54,14 @@ bb1:
 bb4:
 ; CHECK-PIC: cmp
 ; CHECK-PIC: cmp
-; CHECK-PIC-NEXT: bne
-; CHECK-PIC-NEXT: %bb4
-; CHECK-PIC-NEXT: movs
-; CHECK-PIC-NEXT: add
-; CHECK-PIC-NEXT: pop
+; CHECK-PIC: cmp
+; CHECK-PIC: it eq
+; CHECK-PIC-NEXT: ldreq
+; CHECK-PIC-NEXT: it eq
+; CHECK-PIC-NEXT: cmpeq
+; CHECK-PIC-NEXT: beq
+; CHECK-PIC: %bb6
+; CHECK-PIC: mov
   ret i32 0
 
 bb6:

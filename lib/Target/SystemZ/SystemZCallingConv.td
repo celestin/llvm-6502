@@ -1,9 +1,8 @@
 //=- SystemZCallingConv.td - Calling conventions for SystemZ -*- tablegen -*-=//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 // This describes the calling conventions for the SystemZ ABI.
@@ -33,6 +32,9 @@ def RetCC_SystemZ : CallingConv<[
   // Promote i32 to i64 if it has an explicit extension type.
   CCIfType<[i32], CCIfExtend<CCPromoteToType<i64>>>,
 
+  // A SwiftError is returned in R9.
+  CCIfSwiftError<CCIfType<[i64], CCAssignToReg<[R9D]>>>,
+
   // ABI-compliant code returns 64-bit integers in R2.  Make the other
   // call-clobbered argument registers available for code that doesn't
   // care about the ABI.  (R6 is an argument register too, but is
@@ -53,10 +55,6 @@ def RetCC_SystemZ : CallingConv<[
   CCIfSubtarget<"hasVector()",
     CCIfType<[v16i8, v8i16, v4i32, v2i64, v4f32, v2f64],
              CCAssignToReg<[V24, V26, V28, V30, V25, V27, V29, V31]>>>
-
-  // ABI-compliant code returns long double by reference, but that conversion
-  // is left to higher-level code.  Perhaps we could add an f128 definition
-  // here for code that doesn't care about the ABI?
 ]>;
 
 //===----------------------------------------------------------------------===//
@@ -69,8 +67,17 @@ def CC_SystemZ : CallingConv<[
   // are smaller than 64 bits shouldn't.
   CCIfType<[i32], CCIfExtend<CCPromoteToType<i64>>>,
 
+  // A SwiftSelf is passed in callee-saved R10.
+  CCIfSwiftSelf<CCIfType<[i64], CCAssignToReg<[R10D]>>>,
+
+  // A SwiftError is passed in callee-saved R9.
+  CCIfSwiftError<CCIfType<[i64], CCAssignToReg<[R9D]>>>,
+
   // Force long double values to the stack and pass i64 pointers to them.
   CCIfType<[f128], CCPassIndirect<i64>>,
+  // Same for i128 values.  These are already split into two i64 here,
+  // so we have to use a custom handler.
+  CCIfType<[i64], CCCustom<"CC_SystemZ_I128Indirect">>,
 
   // The first 5 integer arguments are passed in R2-R6.  Note that R6
   // is call-saved.
@@ -109,3 +116,15 @@ def CC_SystemZ : CallingConv<[
 //===----------------------------------------------------------------------===//
 def CSR_SystemZ : CalleeSavedRegs<(add (sequence "R%dD", 6, 15),
                                        (sequence "F%dD", 8, 15))>;
+
+// R9 is used to return SwiftError; remove it from CSR.
+def CSR_SystemZ_SwiftError : CalleeSavedRegs<(sub CSR_SystemZ, R9D)>;
+
+// "All registers" as used by the AnyReg calling convention.
+// Note that registers 0 and 1 are still defined as intra-call scratch
+// registers that may be clobbered e.g. by PLT stubs.
+def CSR_SystemZ_AllRegs : CalleeSavedRegs<(add (sequence "R%dD", 2, 15),
+                                               (sequence "F%dD", 0, 15))>;
+def CSR_SystemZ_AllRegs_Vector : CalleeSavedRegs<(add (sequence "R%dD", 2, 15),
+                                                      (sequence "V%d", 0, 31))>;
+

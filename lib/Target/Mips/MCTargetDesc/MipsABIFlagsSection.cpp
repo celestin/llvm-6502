@@ -1,13 +1,16 @@
-//===-- MipsABIFlagsSection.cpp - Mips ELF ABI Flags Section ---*- C++ -*--===//
+//===- MipsABIFlagsSection.cpp - Mips ELF ABI Flags Section ---------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
-#include "MipsABIFlagsSection.h"
+#include "MCTargetDesc/MipsABIFlagsSection.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/MC/MCStreamer.h"
+#include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/MipsABIFlags.h"
 
 using namespace llvm;
 
@@ -51,19 +54,21 @@ uint8_t MipsABIFlagsSection::getCPR1SizeValue() {
 }
 
 namespace llvm {
+
 MCStreamer &operator<<(MCStreamer &OS, MipsABIFlagsSection &ABIFlagsSection) {
   // Write out a Elf_Internal_ABIFlags_v0 struct
-  OS.EmitIntValue(ABIFlagsSection.getVersionValue(), 2);         // version
-  OS.EmitIntValue(ABIFlagsSection.getISALevelValue(), 1);        // isa_level
-  OS.EmitIntValue(ABIFlagsSection.getISARevisionValue(), 1);     // isa_rev
-  OS.EmitIntValue(ABIFlagsSection.getGPRSizeValue(), 1);         // gpr_size
-  OS.EmitIntValue(ABIFlagsSection.getCPR1SizeValue(), 1);        // cpr1_size
-  OS.EmitIntValue(ABIFlagsSection.getCPR2SizeValue(), 1);        // cpr2_size
-  OS.EmitIntValue(ABIFlagsSection.getFpABIValue(), 1);           // fp_abi
-  OS.EmitIntValue(ABIFlagsSection.getISAExtensionSetValue(), 4); // isa_ext
-  OS.EmitIntValue(ABIFlagsSection.getASESetValue(), 4);          // ases
-  OS.EmitIntValue(ABIFlagsSection.getFlags1Value(), 4);          // flags1
-  OS.EmitIntValue(ABIFlagsSection.getFlags2Value(), 4);          // flags2
+  OS.EmitIntValue(ABIFlagsSection.getVersionValue(), 2);      // version
+  OS.EmitIntValue(ABIFlagsSection.getISALevelValue(), 1);     // isa_level
+  OS.EmitIntValue(ABIFlagsSection.getISARevisionValue(), 1);  // isa_rev
+  OS.EmitIntValue(ABIFlagsSection.getGPRSizeValue(), 1);      // gpr_size
+  OS.EmitIntValue(ABIFlagsSection.getCPR1SizeValue(), 1);     // cpr1_size
+  OS.EmitIntValue(ABIFlagsSection.getCPR2SizeValue(), 1);     // cpr2_size
+  OS.EmitIntValue(ABIFlagsSection.getFpABIValue(), 1);        // fp_abi
+  OS.EmitIntValue(ABIFlagsSection.getISAExtensionValue(), 4); // isa_ext
+  OS.EmitIntValue(ABIFlagsSection.getASESetValue(), 4);       // ases
+  OS.EmitIntValue(ABIFlagsSection.getFlags1Value(), 4);       // flags1
+  OS.EmitIntValue(ABIFlagsSection.getFlags2Value(), 4);       // flags2
   return OS;
 }
-}
+
+} // end namespace llvm

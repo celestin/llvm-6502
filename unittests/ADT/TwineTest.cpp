@@ -1,14 +1,15 @@
 //===- TwineTest.cpp - Twine unit tests -----------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
 #include "llvm/ADT/Twine.h"
 #include "llvm/ADT/SmallString.h"
+#include "llvm/Support/FormatAdapters.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
 #include "gtest/gtest.h"
 using namespace llvm;
@@ -30,6 +31,7 @@ TEST(TwineTest, Construction) {
   EXPECT_EQ("hi", Twine(StringRef(std::string("hi"))).str());
   EXPECT_EQ("hi", Twine(StringRef("hithere", 2)).str());
   EXPECT_EQ("hi", Twine(SmallString<4>("hi")).str());
+  EXPECT_EQ("hi", Twine(formatv("{0}", "hi")).str());
 }
 
 TEST(TwineTest, Numbers) {
@@ -65,6 +67,10 @@ TEST(TwineTest, Concat) {
             repr(Twine().concat(Twine("hi"))));
   EXPECT_EQ("(Twine smallstring:\"hi\" empty)", 
             repr(Twine().concat(Twine(SmallString<5>("hi")))));
+  EXPECT_EQ("(Twine formatv:\"howdy\" empty)",
+            repr(Twine(formatv("howdy")).concat(Twine())));
+  EXPECT_EQ("(Twine formatv:\"howdy\" empty)",
+            repr(Twine().concat(Twine(formatv("howdy")))));
   EXPECT_EQ("(Twine smallstring:\"hey\" cstring:\"there\")", 
             repr(Twine(SmallString<7>("hey")).concat(Twine("there"))));
 
@@ -89,6 +95,25 @@ TEST(TwineTest, toNullTerminatedStringRef) {
   EXPECT_EQ(0, *Twine(SmallString<11>("hello"))
                     .toNullTerminatedStringRef(storage)
                     .end());
+  EXPECT_EQ(0, *Twine(formatv("{0}{1}", "how", "dy"))
+                    .toNullTerminatedStringRef(storage)
+                    .end());
+}
+
+TEST(TwineTest, LazyEvaluation) {
+  struct formatter : FormatAdapter<int> {
+    explicit formatter(int &Count) : FormatAdapter(0), Count(Count) {}
+    int &Count;
+
+    void format(raw_ostream &OS, StringRef Style) { ++Count; }
+  };
+
+  int Count = 0;
+  formatter Formatter(Count);
+  (void)Twine(formatv("{0}", Formatter));
+  EXPECT_EQ(0, Count);
+  (void)Twine(formatv("{0}", Formatter)).str();
+  EXPECT_EQ(1, Count);
 }
 
   // I suppose linking in the entire code generator to add a unit test to check

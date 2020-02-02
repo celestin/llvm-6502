@@ -1,9 +1,8 @@
 //===-- TargetMachine.cpp -------------------------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -11,46 +10,35 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm-c/TargetMachine.h"
 #include "llvm-c/Core.h"
 #include "llvm-c/Target.h"
+#include "llvm-c/TargetMachine.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/IR/DataLayout.h"
-#include "llvm/IR/Module.h"
 #include "llvm/IR/LegacyPassManager.h"
-#include "llvm/Support/CodeGen.h"
+#include "llvm/IR/Module.h"
+#include "llvm/MC/SubtargetFeature.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/FormattedStream.h"
 #include "llvm/Support/Host.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Target/CodeGenCWrappers.h"
 #include "llvm/Target/TargetMachine.h"
-#include "llvm/Target/TargetSubtargetInfo.h"
 #include <cassert>
 #include <cstdlib>
 #include <cstring>
 
 using namespace llvm;
 
-
-// The TargetMachine uses to offer access to a DataLayout member. This is reflected
-// in the C API. For backward compatibility reason, this structure allows to keep
-// a DataLayout member accessible to C client that have a handle to a
-// LLVMTargetMachineRef.
-struct LLVMOpaqueTargetMachine {
-  std::unique_ptr<TargetMachine> Machine;
-  DataLayout DL;
-};
-
-
 static TargetMachine *unwrap(LLVMTargetMachineRef P) {
-  return P->Machine.get();
+  return reinterpret_cast<TargetMachine *>(P);
 }
 static Target *unwrap(LLVMTargetRef P) {
   return reinterpret_cast<Target*>(P);
 }
 static LLVMTargetMachineRef wrap(const TargetMachine *P) {
-  return new LLVMOpaqueTargetMachine{ std::unique_ptr<TargetMachine>(const_cast<TargetMachine*>(P)),  P->createDataLayout() };
+  return reinterpret_cast<LLVMTargetMachineRef>(const_cast<TargetMachine *>(P));
 }
 static LLVMTargetRef wrap(const Target * P) {
   return reinterpret_cast<LLVMTargetRef>(const_cast<Target*>(P));
@@ -70,25 +58,24 @@ LLVMTargetRef LLVMGetNextTarget(LLVMTargetRef T) {
 
 LLVMTargetRef LLVMGetTargetFromName(const char *Name) {
   StringRef NameRef = Name;
-  auto I = std::find_if(
-      TargetRegistry::targets().begin(), TargetRegistry::targets().end(),
-      [&](const Target &T) { return T.getName() == NameRef; });
+  auto I = find_if(TargetRegistry::targets(),
+                   [&](const Target &T) { return T.getName() == NameRef; });
   return I != TargetRegistry::targets().end() ? wrap(&*I) : nullptr;
 }
 
 LLVMBool LLVMGetTargetFromTriple(const char* TripleStr, LLVMTargetRef *T,
                                  char **ErrorMessage) {
   std::string Error;
-  
+
   *T = wrap(TargetRegistry::lookupTarget(TripleStr, Error));
-  
+
   if (!*T) {
     if (ErrorMessage)
       *ErrorMessage = strdup(Error.c_str());
 
     return 1;
   }
-  
+
   return 0;
 }
 
@@ -113,10 +100,10 @@ LLVMBool LLVMTargetHasAsmBackend(LLVMTargetRef T) {
 }
 
 LLVMTargetMachineRef LLVMCreateTargetMachine(LLVMTargetRef T,
-        const char* Triple, const char* CPU, const char* Features,
+        const char *Triple, const char *CPU, const char *Features,
         LLVMCodeGenOptLevel Level, LLVMRelocMode Reloc,
         LLVMCodeModel CodeModel) {
-  Reloc::Model RM;
+  Optional<Reloc::Model> RM;
   switch (Reloc){
     case LLVMRelocStatic:
       RM = Reloc::Static;
@@ -127,12 +114,21 @@ LLVMTargetMachineRef LLVMCreateTargetMachine(LLVMTargetRef T,
     case LLVMRelocDynamicNoPic:
       RM = Reloc::DynamicNoPIC;
       break;
+    case LLVMRelocROPI:
+      RM = Reloc::ROPI;
+      break;
+    case LLVMRelocRWPI:
+      RM = Reloc::RWPI;
+      break;
+    case LLVMRelocROPI_RWPI:
+      RM = Reloc::ROPI_RWPI;
+      break;
     default:
-      RM = Reloc::Default;
       break;
   }
 
-  CodeModel::Model CM = unwrap(CodeModel);
+  bool JIT;
+  Optional<CodeModel::Model> CM = unwrap(CodeModel, JIT);
 
   CodeGenOpt::Level OL;
   switch (Level) {
@@ -151,14 +147,11 @@ LLVMTargetMachineRef LLVMCreateTargetMachine(LLVMTargetRef T,
   }
 
   TargetOptions opt;
-  return wrap(unwrap(T)->createTargetMachine(Triple, CPU, Features, opt, RM,
-    CM, OL));
+  return wrap(unwrap(T)->createTargetMachine(Triple, CPU, Features, opt, RM, CM,
+                                             OL, JIT));
 }
 
-
-void LLVMDisposeTargetMachine(LLVMTargetMachineRef T) {
-  delete T;
-}
+void LLVMDisposeTargetMachine(LLVMTargetMachineRef T) { delete unwrap(T); }
 
 LLVMTargetRef LLVMGetTargetMachineTarget(LLVMTargetMachineRef T) {
   const Target* target = &(unwrap(T)->getTarget());
@@ -180,14 +173,13 @@ char* LLVMGetTargetMachineFeatureString(LLVMTargetMachineRef T) {
   return strdup(StringRep.c_str());
 }
 
-/// @deprecated: see "struct LLVMOpaqueTargetMachine" description above
-LLVMTargetDataRef LLVMGetTargetMachineData(LLVMTargetMachineRef T) {
-  return wrap(&T->DL);
-}
-
 void LLVMSetTargetMachineAsmVerbosity(LLVMTargetMachineRef T,
                                       LLVMBool VerboseAsm) {
   unwrap(T)->Options.MCOptions.AsmVerbose = VerboseAsm;
+}
+
+LLVMTargetDataRef LLVMCreateTargetDataLayout(LLVMTargetMachineRef T) {
+  return wrap(new DataLayout(unwrap(T)->createDataLayout()));
 }
 
 static LLVMBool LLVMTargetMachineEmit(LLVMTargetMachineRef T, LLVMModuleRef M,
@@ -212,7 +204,7 @@ static LLVMBool LLVMTargetMachineEmit(LLVMTargetMachineRef T, LLVMModuleRef M,
       ft = TargetMachine::CGFT_ObjectFile;
       break;
   }
-  if (TM->addPassesToEmitFile(pass, OS, ft)) {
+  if (TM->addPassesToEmitFile(pass, OS, nullptr, ft)) {
     error = "TargetMachine can't emit a file of this type";
     *ErrorMessage = strdup(error.c_str());
     return true;
@@ -227,7 +219,7 @@ static LLVMBool LLVMTargetMachineEmit(LLVMTargetMachineRef T, LLVMModuleRef M,
 LLVMBool LLVMTargetMachineEmitToFile(LLVMTargetMachineRef T, LLVMModuleRef M,
   char* Filename, LLVMCodeGenFileType codegen, char** ErrorMessage) {
   std::error_code EC;
-  raw_fd_ostream dest(Filename, EC, sys::fs::F_None);
+  raw_fd_ostream dest(Filename, EC, sys::fs::OF_None);
   if (EC) {
     *ErrorMessage = strdup(EC.message().c_str());
     return true;
@@ -243,7 +235,6 @@ LLVMBool LLVMTargetMachineEmitToMemoryBuffer(LLVMTargetMachineRef T,
   SmallString<0> CodeString;
   raw_svector_ostream OStream(CodeString);
   bool Result = LLVMTargetMachineEmit(T, M, OStream, codegen, ErrorMessage);
-  OStream.flush();
 
   StringRef Data = OStream.str();
   *OutMemBuf =
@@ -253,6 +244,25 @@ LLVMBool LLVMTargetMachineEmitToMemoryBuffer(LLVMTargetMachineRef T,
 
 char *LLVMGetDefaultTargetTriple(void) {
   return strdup(sys::getDefaultTargetTriple().c_str());
+}
+
+char *LLVMNormalizeTargetTriple(const char* triple) {
+  return strdup(Triple::normalize(StringRef(triple)).c_str());
+}
+
+char *LLVMGetHostCPUName(void) {
+  return strdup(sys::getHostCPUName().data());
+}
+
+char *LLVMGetHostCPUFeatures(void) {
+  SubtargetFeatures Features;
+  StringMap<bool> HostFeatures;
+
+  if (sys::getHostCPUFeatures(HostFeatures))
+    for (auto &F : HostFeatures)
+      Features.AddFeature(F.first(), F.second);
+
+  return strdup(Features.getString().c_str());
 }
 
 void LLVMAddAnalysisPasses(LLVMTargetMachineRef T, LLVMPassManagerRef PM) {

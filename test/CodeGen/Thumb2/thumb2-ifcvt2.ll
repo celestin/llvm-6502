@@ -8,7 +8,7 @@ entry:
 ; CHECK: it ne
 ; CHECK: cmpne
 ; CHECK: it hi
-; CHECK: pophi {r7, pc}
+; CHECK: bxhi lr
 	%tmp1 = icmp ult i32 %X, 4		; <i1> [#uses=1]
 	%tmp4 = icmp eq i32 %Y, 0		; <i1> [#uses=1]
 	%tmp7 = or i1 %tmp4, %tmp1		; <i1> [#uses=1]
@@ -35,9 +35,6 @@ entry:
 ; CHECK: cmp
 ; CHECK: it eq
 ; CHECK: cmpeq
-; CHECK: itt eq
-; CHECK: moveq
-; CHECK: popeq
 	br label %tailrecurse
 
 tailrecurse:		; preds = %bb, %entry
@@ -69,13 +66,13 @@ define fastcc void @t1(%struct.SString* %word, i8 signext  %c) {
 entry:
 ; CHECK-LABEL: t1:
 ; CHECK: it ne
-; CHECK: popne {r7, pc}
+; CHECK: bxne lr
 	%tmp1 = icmp eq %struct.SString* %word, null		; <i1> [#uses=1]
 	br i1 %tmp1, label %cond_true, label %cond_false
 
 cond_true:		; preds = %entry
 	tail call void @abort( )
-	unreachable
+	ret void
 
 cond_false:		; preds = %entry
 	ret void
@@ -85,7 +82,7 @@ define fastcc void @t2() nounwind {
 entry:
 ; CHECK-LABEL: t2:
 ; CHECK: cmp r0, #0
-; CHECK: %growMapping.exit
+; CHECK: trap
 	br i1 undef, label %bb.i.i3, label %growMapping.exit
 
 bb.i.i3:		; preds = %entry

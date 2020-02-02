@@ -1,9 +1,8 @@
 //===- llvm/unittest/IR/WaymarkTest.cpp - getUser() unit tests ------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -19,16 +18,14 @@
 namespace llvm {
 namespace {
 
-Constant *char2constant(char c) {
-  return ConstantInt::get(Type::getInt8Ty(getGlobalContext()), c);
-}
-
-
 TEST(WaymarkTest, NativeArray) {
+  LLVMContext Context;
   static uint8_t tail[22] = "s02s33s30y2y0s1x0syxS";
   Value * values[22];
-  std::transform(tail, tail + 22, values, char2constant);
-  FunctionType *FT = FunctionType::get(Type::getVoidTy(getGlobalContext()), true);
+  std::transform(tail, tail + 22, values, [&](char c) {
+    return ConstantInt::get(Type::getInt8Ty(Context), c);
+  });
+  FunctionType *FT = FunctionType::get(Type::getVoidTy(Context), true);
   std::unique_ptr<Function> F(
       Function::Create(FT, GlobalValue::ExternalLinkage));
   const CallInst *A = CallInst::Create(F.get(), makeArrayRef(values));

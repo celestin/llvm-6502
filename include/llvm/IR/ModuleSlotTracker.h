@@ -1,9 +1,8 @@
 //===-- llvm/IR/ModuleSlotTracker.h -----------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -30,6 +29,8 @@ class Value;
 class ModuleSlotTracker {
   /// Storage for a slot tracker.
   std::unique_ptr<SlotTracker> MachineStorage;
+  bool ShouldCreateStorage = false;
+  bool ShouldInitializeAllMetadata = false;
 
   const Module *M = nullptr;
   const Function *F = nullptr;
@@ -53,7 +54,9 @@ public:
   /// Destructor to clean up storage.
   ~ModuleSlotTracker();
 
-  SlotTracker *getMachine() const { return Machine; }
+  /// Lazily creates a slot tracker.
+  SlotTracker *getMachine();
+
   const Module *getModule() const { return M; }
   const Function *getCurrentFunction() const { return F; }
 

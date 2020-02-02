@@ -1,4 +1,4 @@
-; RUN: opt < %s -tailcallelim -S | FileCheck %s
+; RUN: opt < %s -tailcallelim -verify-dom-info -S | FileCheck %s
 
 declare void @noarg()
 declare void @use(i32*)
@@ -156,7 +156,7 @@ define void @test9(i32* byval %a) {
 
 declare void @ctor(%struct.X*)
 define void @test10(%struct.X* noalias sret %agg.result, i1 zeroext %b) {
-; CHECK-LABEL @test10
+; CHECK-LABEL: @test10
 entry:
   %x = alloca %struct.X, align 8
   br i1 %b, label %if.then, label %if.end
@@ -188,3 +188,54 @@ define void @test11() {
 ; CHECK: call void @test11_helper2
   ret void
 }
+
+; PR25928
+define void @test12() {
+entry:
+; CHECK-LABEL: @test12
+; CHECK: {{^ *}} call void undef(i8* undef) [ "foo"(i8* %e) ]
+  %e = alloca i8
+  call void undef(i8* undef) [ "foo"(i8* %e) ]
+  unreachable
+}
+
+%struct.foo = type { [10 x i32] }
+
+; If an alloca is passed byval it is not a use of the alloca or an escape
+; point, and both calls below can be marked tail.
+define void @test13() {
+; CHECK-LABEL: @test13
+; CHECK: tail call void @bar(%struct.foo* byval %f)
+; CHECK: tail call void @bar(%struct.foo* null)
+entry:
+  %f = alloca %struct.foo
+  call void @bar(%struct.foo* byval %f)
+  call void @bar(%struct.foo* null)
+  ret void
+}
+
+; A call which passes a byval parameter using byval can be marked tail.
+define void @test14(%struct.foo* byval %f) {
+; CHECK-LABEL: @test14
+; CHECK: tail call void @bar
+entry:
+  call void @bar(%struct.foo* byval %f)
+  ret void
+}
+
+; If a byval parameter is copied into an alloca and passed byval the call can
+; be marked tail.
+define void @test15(%struct.foo* byval %f) {
+; CHECK-LABEL: @test15
+; CHECK: tail call void @bar
+entry:
+  %agg.tmp = alloca %struct.foo
+  %0 = bitcast %struct.foo* %agg.tmp to i8*
+  %1 = bitcast %struct.foo* %f to i8*
+  call void @llvm.memcpy.p0i8.p0i8.i64(i8* %0, i8* %1, i64 40, i1 false)
+  call void @bar(%struct.foo* byval %agg.tmp)
+  ret void
+}
+
+declare void @bar(%struct.foo* byval)
+declare void @llvm.memcpy.p0i8.p0i8.i64(i8* nocapture writeonly, i8* nocapture readonly, i64, i1)

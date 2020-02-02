@@ -1,9 +1,8 @@
 //===- MCJITObjectCacheTest.cpp - Unit tests for MCJIT object caching -----===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -78,7 +77,6 @@ private:
 
 class MCJITObjectCacheTest : public testing::Test, public MCJITTestBase {
 protected:
-
   enum {
     OriginalRC = 6,
     ReplacementRC = 7
@@ -101,7 +99,7 @@ protected:
     EXPECT_TRUE(nullptr != vPtr)
       << "Unable to get pointer to main() from JIT";
 
-    int (*FuncPtr)(void) = (int(*)(void))(intptr_t)vPtr;
+    int (*FuncPtr)() = (int(*)())(intptr_t)vPtr;
     int returnCode = FuncPtr();
     EXPECT_EQ(returnCode, ExpectedRC);
   }
@@ -118,7 +116,6 @@ TEST_F(MCJITObjectCacheTest, SetNullObjectCache) {
 
   compileAndRun();
 }
-
 
 TEST_F(MCJITObjectCacheTest, VerifyBasicObjectCaching) {
   SKIP_UNSUPPORTED_PLATFORM;
@@ -228,5 +225,4 @@ TEST_F(MCJITObjectCacheTest, VerifyNonLoadFromCache) {
   EXPECT_FALSE(Cache->wereDuplicatesInserted());
 }
 
-} // Namespace
-
+} // end anonymous namespace

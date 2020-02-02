@@ -1,9 +1,8 @@
-//===- MIRParser.h - MIR serialization format parser ----------------------===//
+//===- MIRParser.h - MIR serialization format parser ------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -18,20 +17,20 @@
 #ifndef LLVM_CODEGEN_MIRPARSER_MIRPARSER_H
 #define LLVM_CODEGEN_MIRPARSER_MIRPARSER_H
 
-#include "llvm/ADT/StringRef.h"
-#include "llvm/CodeGen/MachineFunctionInitializer.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include <memory>
 
 namespace llvm {
 
+class StringRef;
 class MIRParserImpl;
+class MachineModuleInfo;
 class SMDiagnostic;
 
 /// This class initializes machine functions by applying the state loaded from
 /// a MIR file.
-class MIRParser : public MachineFunctionInitializer {
+class MIRParser {
   std::unique_ptr<MIRParserImpl> Impl;
 
 public:
@@ -39,17 +38,17 @@ public:
   MIRParser(const MIRParser &) = delete;
   ~MIRParser();
 
-  /// Parse the optional LLVM IR module that's embedded in the MIR file.
+  /// Parses the optional LLVM IR module in the MIR file.
   ///
   /// A new, empty module is created if the LLVM IR isn't present.
-  /// Returns null if a parsing error occurred.
-  std::unique_ptr<Module> parseLLVMModule();
+  /// \returns nullptr if a parsing error occurred.
+  std::unique_ptr<Module> parseIRModule();
 
-  /// Initialize the machine function to the state that's described in the MIR
-  /// file.
+  /// Parses MachineFunctions in the MIR file and add them to the given
+  /// MachineModuleInfo \p MMI.
   ///
-  /// Return true if error occurred.
-  bool initializeMachineFunction(MachineFunction &MF) override;
+  /// \returns true if an error occurred.
+  bool parseMachineFunctions(Module &M, MachineModuleInfo &MMI);
 };
 
 /// This function is the main interface to the MIR serialization format parser.
@@ -78,4 +77,4 @@ createMIRParser(std::unique_ptr<MemoryBuffer> Contents, LLVMContext &Context);
 
 } // end namespace llvm
 
-#endif
+#endif // LLVM_CODEGEN_MIRPARSER_MIRPARSER_H

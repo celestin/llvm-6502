@@ -1,4 +1,4 @@
-; RUN: llc < %s -march=x86 -relocation-model=pic -mtriple=i686-unknown-linux-gnu -fast-isel | FileCheck %s
+; RUN: llc < %s -relocation-model=pic -mtriple=i686-unknown-linux-gnu -fast-isel | FileCheck %s
 ; PR3654
 
 @v = thread_local global i32 0
@@ -13,7 +13,7 @@ entry:
 ; CHECK: leal	v@TLSGD
 ; CHECK: __tls_get_addr
 
-@alias = internal alias i32* @v
+@alias = internal alias i32, i32* @v
 define i32 @f_alias() nounwind {
 entry:
           %t = load i32, i32* @v

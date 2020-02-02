@@ -1,9 +1,8 @@
 //===-- Interpreter.h ------------------------------------------*- C++ -*--===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -26,7 +25,6 @@
 namespace llvm {
 
 class IntrinsicLowering;
-struct FunctionInfo;
 template<typename T> class generic_gep_type_iterator;
 class ConstantExpr;
 typedef generic_gep_type_iterator<User::const_op_iterator> gep_type_iterator;
@@ -42,12 +40,9 @@ class AllocaHolder {
 public:
   AllocaHolder() {}
 
-  // Make this type move-only. Define explicit move special members for MSVC.
-  AllocaHolder(AllocaHolder &&RHS) : Allocations(std::move(RHS.Allocations)) {}
-  AllocaHolder &operator=(AllocaHolder &&RHS) {
-    Allocations = std::move(RHS.Allocations);
-    return *this;
-  }
+  // Make this type move-only.
+  AllocaHolder(AllocaHolder &&) = default;
+  AllocaHolder &operator=(AllocaHolder &&RHS) = default;
 
   ~AllocaHolder() {
     for (void *Allocation : Allocations)
@@ -73,22 +68,6 @@ struct ExecutionContext {
   AllocaHolder Allocas;            // Track memory allocated by alloca
 
   ExecutionContext() : CurFunction(nullptr), CurBB(nullptr), CurInst(nullptr) {}
-
-  ExecutionContext(ExecutionContext &&O)
-      : CurFunction(O.CurFunction), CurBB(O.CurBB), CurInst(O.CurInst),
-        Caller(O.Caller), Values(std::move(O.Values)),
-        VarArgs(std::move(O.VarArgs)), Allocas(std::move(O.Allocas)) {}
-
-  ExecutionContext &operator=(ExecutionContext &&O) {
-    CurFunction = O.CurFunction;
-    CurBB = O.CurBB;
-    CurInst = O.CurInst;
-    Caller = O.Caller;
-    Values = std::move(O.Values);
-    VarArgs = std::move(O.VarArgs);
-    Allocas = std::move(O.Allocas);
-    return *this;
-  }
 };
 
 // Interpreter - This class represents the entirety of the interpreter.
@@ -145,6 +124,7 @@ public:
   void visitSwitchInst(SwitchInst &I);
   void visitIndirectBrInst(IndirectBrInst &I);
 
+  void visitUnaryOperator(UnaryOperator &I);
   void visitBinaryOperator(BinaryOperator &I);
   void visitICmpInst(ICmpInst &I);
   void visitFCmpInst(FCmpInst &I);
@@ -152,8 +132,8 @@ public:
   void visitLoadInst(LoadInst &I);
   void visitStoreInst(StoreInst &I);
   void visitGetElementPtrInst(GetElementPtrInst &I);
-  void visitPHINode(PHINode &PN) { 
-    llvm_unreachable("PHI nodes already handled!"); 
+  void visitPHINode(PHINode &PN) {
+    llvm_unreachable("PHI nodes already handled!");
   }
   void visitTruncInst(TruncInst &I);
   void visitZExtInst(ZExtInst &I);
@@ -244,7 +224,7 @@ private:  // Helper functions
                                    ExecutionContext &SF);
   GenericValue executeBitCastInst(Value *SrcVal, Type *DstTy,
                                   ExecutionContext &SF);
-  GenericValue executeCastOperation(Instruction::CastOps opcode, Value *SrcVal, 
+  GenericValue executeCastOperation(Instruction::CastOps opcode, Value *SrcVal,
                                     Type *Ty, ExecutionContext &SF);
   void popStackAndReturnValueToCaller(Type *RetTy, GenericValue Result);
 

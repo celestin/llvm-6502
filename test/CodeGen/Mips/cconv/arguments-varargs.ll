@@ -1,14 +1,22 @@
-; RUN: llc -mtriple=mips-linux -relocation-model=static < %s | FileCheck --check-prefix=ALL --check-prefix=O32 --check-prefix=O32-BE %s
-; RUN: llc -mtriple=mipsel-linux -relocation-model=static < %s | FileCheck --check-prefix=ALL --check-prefix=O32 --check-prefix=O32-LE %s
+; RUN: llc -mtriple=mips-linux -relocation-model=static < %s \
+; RUN:   | FileCheck --check-prefixes=ALL,O32,O32-BE %s
+; RUN: llc -mtriple=mipsel-linux -relocation-model=static < %s \
+; RUN:   | FileCheck --check-prefixes=ALL,O32,O32-LE %s
 
-; RUN-TODO: llc -march=mips64 -relocation-model=static -target-abi o32 < %s | FileCheck --check-prefix=ALL --check-prefix=O32 %s
-; RUN-TODO: llc -march=mips64el -relocation-model=static -target-abi o32 < %s | FileCheck --check-prefix=ALL --check-prefix=O32 %s
+; RUN-TODO: llc -march=mips64 -relocation-model=static -target-abi o32 < %s \
+; RUN-TODO:   | FileCheck --check-prefixes=ALL,O32 %s
+; RUN-TODO: llc -march=mips64el -relocation-model=static -target-abi o32 < %s \
+; RUN-TODO:   | FileCheck --check-prefixes=ALL,O32 %s
 
-; RUN: llc -mtriple=mips64-linux -relocation-model=static -target-abi n32 < %s | FileCheck --check-prefix=ALL --check-prefix=NEW --check-prefix=N32 --check-prefix=NEW-BE %s
-; RUN: llc -mtriple=mips64el-linux -relocation-model=static -target-abi n32 < %s | FileCheck --check-prefix=ALL --check-prefix=NEW --check-prefix=N32 --check-prefix=NEW-LE %s
+; RUN: llc -mtriple=mips64-linux -relocation-model=static -target-abi n32 < %s \
+; RUN:   | FileCheck --check-prefixes=ALL,NEW,N32,NEW-BE %s
+; RUN: llc -mtriple=mips64el-linux -relocation-model=static -target-abi n32 < %s \
+; RUN:   | FileCheck --check-prefixes=ALL,NEW,N32,NEW-LE %s
 
-; RUN: llc -march=mips64 -relocation-model=static -target-abi n64 < %s | FileCheck --check-prefix=ALL --check-prefix=NEW --check-prefix=N64 --check-prefix=NEW-BE %s
-; RUN: llc -march=mips64el -relocation-model=static -target-abi n64 < %s | FileCheck --check-prefix=ALL --check-prefix=NEW --check-prefix=N64 --check-prefix=NEW-LE %s
+; RUN: llc -march=mips64 -relocation-model=static -target-abi n64 < %s \
+; RUN:   | FileCheck --check-prefixes=ALL,NEW,N64,NEW-BE %s
+; RUN: llc -march=mips64el -relocation-model=static -target-abi n64 < %s \
+; RUN:   | FileCheck --check-prefixes=ALL,NEW,N64,NEW-LE %s
 
 @hwords = global [3 x i16] zeroinitializer, align 1
 @words  = global [3 x i32] zeroinitializer, align 1
@@ -52,10 +60,7 @@ entry:
 ; N64-DAG:       daddiu [[VA:\$[0-9]+]], [[SP]], 8
 ; N64-DAG:       sd [[VA]], 0([[SP]])
 
-; Store [[VA]]
-; O32-DAG:       sw [[VA]], 0([[SP]])
-
-; ALL: # ANCHOR1
+; ALL: teqi $zero, 1
 
 ; Increment [[VA]]
 ; O32-DAG:       lw [[VA:\$[0-9]+]], 0([[SP]])
@@ -85,11 +90,11 @@ entry:
 
 ; N32-DAG:       addiu [[GV:\$[0-9]+]], ${{[0-9]+}}, %lo(hwords)
 
-; N64-DAG:       ld [[GV:\$[0-9]+]], %got_disp(hwords)(
+; N64-DAG:       daddiu [[GV:\$[0-9]+]], ${{[0-9]+}}, %lo(hwords)
 
 ; ALL-DAG:       sh [[ARG1]], 2([[GV]])
 
-; ALL: # ANCHOR2
+; ALL: teqi $zero, 2
 
 ; Increment [[VA]] again.
 ; O32-DAG:       lw [[VA:\$[0-9]+]], 0([[SP]])
@@ -117,12 +122,12 @@ entry:
   %ap2 = bitcast i8** %ap to i8*
   call void @llvm.va_start(i8* %ap2)
 
-  call void asm sideeffect "# ANCHOR1", ""()
+  call void asm sideeffect "teqi $$zero, 1", ""()
   %arg1 = va_arg i8** %ap, i16
   %e1 = getelementptr [3 x i16], [3 x i16]* @hwords, i32 0, i32 1
   store volatile i16 %arg1, i16* %e1, align 2
 
-  call void asm sideeffect "# ANCHOR2", ""()
+  call void asm sideeffect "teqi $$zero, 2", ""()
   %arg2 = va_arg i8** %ap, i16
   %e2 = getelementptr [3 x i16], [3 x i16]* @hwords, i32 0, i32 2
   store volatile i16 %arg2, i16* %e2, align 2
@@ -170,10 +175,7 @@ entry:
 ; N64-DAG:       daddiu [[VA:\$[0-9]+]], [[SP]], 8
 ; N64-DAG:       sd [[VA]], 0([[SP]])
 
-; Store [[VA]]
-; O32-DAG:       sw [[VA]], 0([[SP]])
-
-; ALL: # ANCHOR1
+; ALL: teqi $zero, 1
 
 ; Increment [[VA]]
 ; O32-DAG:       lw [[VA:\$[0-9]+]], 0([[SP]])
@@ -203,11 +205,11 @@ entry:
 
 ; N32-DAG:       addiu [[GV:\$[0-9]+]], ${{[0-9]+}}, %lo(words)
 
-; N64-DAG:       ld [[GV:\$[0-9]+]], %got_disp(words)(
+; N64-DAG:       daddiu [[GV:\$[0-9]+]], ${{[0-9]+}}, %lo(words)
 
 ; ALL-DAG:       sw [[ARG1]], 4([[GV]])
 
-; ALL: # ANCHOR2
+; ALL: teqi $zero, 2
 
 ; Increment [[VA]] again.
 ; O32-DAG:       lw [[VA:\$[0-9]+]], 0([[SP]])
@@ -235,12 +237,12 @@ entry:
   %ap2 = bitcast i8** %ap to i8*
   call void @llvm.va_start(i8* %ap2)
 
-  call void asm sideeffect "# ANCHOR1", ""()
+  call void asm sideeffect "teqi $$zero, 1", ""()
   %arg1 = va_arg i8** %ap, i32
   %e1 = getelementptr [3 x i32], [3 x i32]* @words, i32 0, i32 1
   store volatile i32 %arg1, i32* %e1, align 4
 
-  call void asm sideeffect "# ANCHOR2", ""()
+  call void asm sideeffect "teqi $$zero, 2", ""()
   %arg2 = va_arg i8** %ap, i32
   %e2 = getelementptr [3 x i32], [3 x i32]* @words, i32 0, i32 2
   store volatile i32 %arg2, i32* %e2, align 4
@@ -288,10 +290,7 @@ entry:
 ; N64-DAG:       daddiu [[VA:\$[0-9]+]], [[SP]], 8
 ; N64-DAG:       sd [[VA]], 0([[SP]])
 
-; Store [[VA]]
-; O32-DAG:       sw [[VA]], 0([[SP]])
-
-; ALL: # ANCHOR1
+; ALL: teqi $zero, 1
 
 ; Increment [[VA]] (and realign pointer for O32)
 ; O32:           lw [[VA:\$[0-9]+]], 0([[SP]])
@@ -315,20 +314,19 @@ entry:
 ; Big-endian mode for N32/N64 must add an additional 4 to the offset due to byte
 ; order.
 ; O32-DAG:       addiu [[GV:\$[0-9]+]], ${{[0-9]+}}, %lo(dwords)
-; O32-DAG:       lw [[ARG1:\$[0-9]+]], 0([[VA]])
+; O32-DAG:       lw [[ARG1:\$[0-9]+]], 0([[VA_TMP2]])
 ; O32-DAG:       sw [[ARG1]], 8([[GV]])
-; O32-DAG:       lw [[VA:\$[0-9]+]], 0([[SP]])
-; O32-DAG:       addiu [[VA2:\$[0-9]+]], [[VA]], 4
-; O32-DAG:       sw [[VA2]], 0([[SP]])
-; O32-DAG:       lw [[ARG1:\$[0-9]+]], 0([[VA]])
+; O32-DAG:       addiu [[VA3:\$[0-9]+]], [[VA2]], 4
+; O32-DAG:       sw [[VA3]], 0([[SP]])
+; O32-DAG:       lw [[ARG1:\$[0-9]+]], 4([[VA_TMP2]])
 ; O32-DAG:       sw [[ARG1]], 12([[GV]])
 
 ; N32-DAG:       addiu [[GV:\$[0-9]+]], ${{[0-9]+}}, %lo(dwords)
-; N64-DAG:       ld [[GV:\$[0-9]+]], %got_disp(dwords)(
+; N64-DAG:       daddiu [[GV:\$[0-9]+]], ${{[0-9]+}}, %lo(dwords)
 ; NEW-DAG:       ld [[ARG1:\$[0-9]+]], 0([[VA]])
 ; NEW-DAG:       sd [[ARG1]], 8([[GV]])
 
-; ALL: # ANCHOR2
+; ALL: teqi $zero, 2
 
 ; Increment [[VA]] again.
 ; FIXME: We're still aligned from the last one but CodeGen doesn't spot that.
@@ -349,10 +347,9 @@ entry:
 ; Load the second argument from the variable portion and copy it to the global.
 ; O32-DAG:       lw [[ARG2:\$[0-9]+]], 0([[VA]])
 ; O32-DAG:       sw [[ARG2]], 16([[GV]])
-; O32-DAG:       lw [[VA:\$[0-9]+]], 0([[SP]])
-; O32-DAG:       addiu [[VA2:\$[0-9]+]], [[VA]], 4
-; O32-DAG:       sw [[VA2]], 0([[SP]])
-; O32-DAG:       lw [[ARG2:\$[0-9]+]], 0([[VA]])
+; O32-DAG:       addiu [[VA3:\$[0-9]+]], [[VA2]], 4
+; O32-DAG:       sw [[VA3]], 0([[SP]])
+; O32-DAG:       lw [[ARG2:\$[0-9]+]], 4([[VA_TMP2]])
 ; O32-DAG:       sw [[ARG2]], 20([[GV]])
 
 ; NEW-DAG:       ld [[ARG2:\$[0-9]+]], 0([[VA2]])
@@ -362,12 +359,12 @@ entry:
   %ap2 = bitcast i8** %ap to i8*
   call void @llvm.va_start(i8* %ap2)
 
-  call void asm sideeffect "# ANCHOR1", ""()
+  call void asm sideeffect "teqi $$zero, 1", ""()
   %arg1 = va_arg i8** %ap, i64
   %e1 = getelementptr [3 x i64], [3 x i64]* @dwords, i32 0, i32 1
   store volatile i64 %arg1, i64* %e1, align 8
 
-  call void asm sideeffect "# ANCHOR2", ""()
+  call void asm sideeffect "teqi $$zero, 2", ""()
   %arg2 = va_arg i8** %ap, i64
   %e2 = getelementptr [3 x i64], [3 x i64]* @dwords, i32 0, i32 2
   store volatile i64 %arg2, i64* %e2, align 8
@@ -415,10 +412,7 @@ entry:
 ; N64-DAG:       daddiu [[VA:\$[0-9]+]], [[SP]], 8
 ; N64-DAG:       sd [[VA]], 0([[SP]])
 
-; Store [[VA]]
-; O32-DAG:       sw [[VA]], 0([[SP]])
-
-; ALL: # ANCHOR1
+; ALL: teqi $zero, 1
 
 ; Increment [[VA]]
 ; O32-DAG:       lw [[VA:\$[0-9]+]], 0([[SP]])
@@ -448,11 +442,11 @@ entry:
 
 ; N32-DAG:       addiu [[GV:\$[0-9]+]], ${{[0-9]+}}, %lo(hwords)
 
-; N64-DAG:       ld [[GV:\$[0-9]+]], %got_disp(hwords)(
+; N64-DAG:       daddiu [[GV:\$[0-9]+]], ${{[0-9]+}}, %lo(hwords)
 
 ; ALL-DAG:       sh [[ARG1]], 2([[GV]])
 
-; ALL: # ANCHOR2
+; ALL: teqi $zero, 2
 
 ; Increment [[VA]] again.
 ; O32-DAG:       lw [[VA:\$[0-9]+]], 0([[SP]])
@@ -480,12 +474,12 @@ entry:
   %ap2 = bitcast i8** %ap to i8*
   call void @llvm.va_start(i8* %ap2)
 
-  call void asm sideeffect "# ANCHOR1", ""()
+  call void asm sideeffect "teqi $$zero, 1", ""()
   %arg1 = va_arg i8** %ap, i16
   %e1 = getelementptr [3 x i16], [3 x i16]* @hwords, i32 0, i32 1
   store volatile i16 %arg1, i16* %e1, align 2
 
-  call void asm sideeffect "# ANCHOR2", ""()
+  call void asm sideeffect "teqi $$zero, 2", ""()
   %arg2 = va_arg i8** %ap, i16
   %e2 = getelementptr [3 x i16], [3 x i16]* @hwords, i32 0, i32 2
   store volatile i16 %arg2, i16* %e2, align 2
@@ -533,10 +527,7 @@ entry:
 ; N64-DAG:       daddiu [[VA:\$[0-9]+]], [[SP]], 8
 ; N64-DAG:       sd [[VA]], 0([[SP]])
 
-; Store [[VA]]
-; O32-DAG:       sw [[VA]], 0([[SP]])
-
-; ALL: # ANCHOR1
+; ALL: teqi $zero, 1
 
 ; Increment [[VA]]
 ; O32-DAG:       lw [[VA:\$[0-9]+]], 0([[SP]])
@@ -566,11 +557,11 @@ entry:
 
 ; N32-DAG:       addiu [[GV:\$[0-9]+]], ${{[0-9]+}}, %lo(words)
 
-; N64-DAG:       ld [[GV:\$[0-9]+]], %got_disp(words)(
+; N64-DAG:       daddiu [[GV:\$[0-9]+]], ${{[0-9]+}}, %lo(words)
 
 ; ALL-DAG:       sw [[ARG1]], 4([[GV]])
 
-; ALL: # ANCHOR2
+; ALL: teqi $zero, 2
 
 ; Increment [[VA]] again.
 ; O32-DAG:       lw [[VA:\$[0-9]+]], 0([[SP]])
@@ -598,12 +589,12 @@ entry:
   %ap2 = bitcast i8** %ap to i8*
   call void @llvm.va_start(i8* %ap2)
 
-  call void asm sideeffect "# ANCHOR1", ""()
+  call void asm sideeffect "teqi $$zero, 1", ""()
   %arg1 = va_arg i8** %ap, i32
   %e1 = getelementptr [3 x i32], [3 x i32]* @words, i32 0, i32 1
   store volatile i32 %arg1, i32* %e1, align 4
 
-  call void asm sideeffect "# ANCHOR2", ""()
+  call void asm sideeffect "teqi $$zero, 2", ""()
   %arg2 = va_arg i8** %ap, i32
   %e2 = getelementptr [3 x i32], [3 x i32]* @words, i32 0, i32 2
   store volatile i32 %arg2, i32* %e2, align 4
@@ -651,10 +642,7 @@ entry:
 ; N64-DAG:       daddiu [[VA:\$[0-9]+]], [[SP]], 8
 ; N64-DAG:       sd [[VA]], 0([[SP]])
 
-; Store [[VA]]
-; O32-DAG:       sw [[VA]], 0([[SP]])
-
-; ALL: # ANCHOR1
+; ALL: teqi $zero, 1
 
 ; Increment [[VA]] (and realign pointer for O32)
 ; O32:           lw [[VA:\$[0-9]+]], 0([[SP]])
@@ -678,20 +666,19 @@ entry:
 ; Big-endian mode for N32/N64 must add an additional 4 to the offset due to byte
 ; order.
 ; O32-DAG:       addiu [[GV:\$[0-9]+]], ${{[0-9]+}}, %lo(dwords)
-; O32-DAG:       lw [[ARG1:\$[0-9]+]], 0([[VA]])
+; O32-DAG:       lw [[ARG1:\$[0-9]+]], 0([[VA_TMP2]])
 ; O32-DAG:       sw [[ARG1]], 8([[GV]])
-; O32-DAG:       lw [[VA:\$[0-9]+]], 0([[SP]])
-; O32-DAG:       addiu [[VA2:\$[0-9]+]], [[VA]], 4
-; O32-DAG:       sw [[VA2]], 0([[SP]])
-; O32-DAG:       lw [[ARG1:\$[0-9]+]], 0([[VA]])
+; O32-DAG:       addiu [[VA3:\$[0-9]+]], [[VA2]], 4
+; O32-DAG:       sw [[VA3]], 0([[SP]])
+; O32-DAG:       lw [[ARG1:\$[0-9]+]], 4([[VA_TMP2]])
 ; O32-DAG:       sw [[ARG1]], 12([[GV]])
 
 ; N32-DAG:       addiu [[GV:\$[0-9]+]], ${{[0-9]+}}, %lo(dwords)
-; N64-DAG:       ld [[GV:\$[0-9]+]], %got_disp(dwords)(
+; N64-DAG:       daddiu [[GV:\$[0-9]+]], ${{[0-9]+}}, %lo(dwords)
 ; NEW-DAG:       ld [[ARG1:\$[0-9]+]], 0([[VA]])
 ; NEW-DAG:       sd [[ARG1]], 8([[GV]])
 
-; ALL: # ANCHOR2
+; ALL: teqi $zero, 2
 
 ; Increment [[VA]] again.
 ; FIXME: We're still aligned from the last one but CodeGen doesn't spot that.
@@ -712,10 +699,9 @@ entry:
 ; Load the second argument from the variable portion and copy it to the global.
 ; O32-DAG:       lw [[ARG2:\$[0-9]+]], 0([[VA]])
 ; O32-DAG:       sw [[ARG2]], 16([[GV]])
-; O32-DAG:       lw [[VA:\$[0-9]+]], 0([[SP]])
-; O32-DAG:       addiu [[VA2:\$[0-9]+]], [[VA]], 4
+; O32-DAG:       addiu [[VA3:\$[0-9]+]], [[VA2]], 4
 ; O32-DAG:       sw [[VA2]], 0([[SP]])
-; O32-DAG:       lw [[ARG2:\$[0-9]+]], 0([[VA]])
+; O32-DAG:       lw [[ARG2:\$[0-9]+]], 4([[VA_TMP2]])
 ; O32-DAG:       sw [[ARG2]], 20([[GV]])
 
 ; NEW-DAG:       ld [[ARG2:\$[0-9]+]], 0([[VA2]])
@@ -725,12 +711,12 @@ entry:
   %ap2 = bitcast i8** %ap to i8*
   call void @llvm.va_start(i8* %ap2)
 
-  call void asm sideeffect "# ANCHOR1", ""()
+  call void asm sideeffect "teqi $$zero, 1", ""()
   %arg1 = va_arg i8** %ap, i64
   %e1 = getelementptr [3 x i64], [3 x i64]* @dwords, i32 0, i32 1
   store volatile i64 %arg1, i64* %e1, align 8
 
-  call void asm sideeffect "# ANCHOR2", ""()
+  call void asm sideeffect "teqi $$zero, 2", ""()
   %arg2 = va_arg i8** %ap, i64
   %e2 = getelementptr [3 x i64], [3 x i64]* @dwords, i32 0, i32 2
   store volatile i64 %arg2, i64* %e2, align 8
@@ -777,10 +763,7 @@ entry:
 ; N64-DAG:       daddiu [[VA:\$[0-9]+]], [[SP]], 8
 ; N64-DAG:       sd [[VA]], 0([[SP]])
 
-; Store [[VA]]
-; O32-DAG:       sw [[VA]], 0([[SP]])
-
-; ALL: # ANCHOR1
+; ALL: teqi $zero, 1
 
 ; Increment [[VA]]
 ; O32-DAG:       lw [[VA:\$[0-9]+]], 0([[SP]])
@@ -810,11 +793,11 @@ entry:
 
 ; N32-DAG:       addiu [[GV:\$[0-9]+]], ${{[0-9]+}}, %lo(hwords)
 
-; N64-DAG:       ld [[GV:\$[0-9]+]], %got_disp(hwords)(
+; N64-DAG:       daddiu [[GV:\$[0-9]+]], ${{[0-9]+}}, %lo(hwords)
 
 ; ALL-DAG:       sh [[ARG1]], 2([[GV]])
 
-; ALL: # ANCHOR2
+; ALL: teqi $zero, 2
 
 ; Increment [[VA]] again.
 ; O32-DAG:       lw [[VA:\$[0-9]+]], 0([[SP]])
@@ -842,12 +825,12 @@ entry:
   %ap2 = bitcast i8** %ap to i8*
   call void @llvm.va_start(i8* %ap2)
 
-  call void asm sideeffect "# ANCHOR1", ""()
+  call void asm sideeffect "teqi $$zero, 1", ""()
   %arg1 = va_arg i8** %ap, i16
   %e1 = getelementptr [3 x i16], [3 x i16]* @hwords, i32 0, i32 1
   store volatile i16 %arg1, i16* %e1, align 2
 
-  call void asm sideeffect "# ANCHOR2", ""()
+  call void asm sideeffect "teqi $$zero, 2", ""()
   %arg2 = va_arg i8** %ap, i16
   %e2 = getelementptr [3 x i16], [3 x i16]* @hwords, i32 0, i32 2
   store volatile i16 %arg2, i16* %e2, align 2
@@ -894,10 +877,7 @@ entry:
 ; N64-DAG:       daddiu [[VA:\$[0-9]+]], [[SP]], 8
 ; N64-DAG:       sd [[VA]], 0([[SP]])
 
-; Store [[VA]]
-; O32-DAG:       sw [[VA]], 0([[SP]])
-
-; ALL: # ANCHOR1
+; ALL: teqi $zero, 1
 
 ; Increment [[VA]]
 ; O32-DAG:       lw [[VA:\$[0-9]+]], 0([[SP]])
@@ -927,11 +907,11 @@ entry:
 
 ; N32-DAG:       addiu [[GV:\$[0-9]+]], ${{[0-9]+}}, %lo(words)
 
-; N64-DAG:       ld [[GV:\$[0-9]+]], %got_disp(words)(
+; N64-DAG:       daddiu [[GV:\$[0-9]+]], ${{[0-9]+}}, %lo(words)
 
 ; ALL-DAG:       sw [[ARG1]], 4([[GV]])
 
-; ALL: # ANCHOR2
+; ALL: teqi $zero, 2
 
 ; Increment [[VA]] again.
 ; O32-DAG:       lw [[VA:\$[0-9]+]], 0([[SP]])
@@ -959,12 +939,12 @@ entry:
   %ap2 = bitcast i8** %ap to i8*
   call void @llvm.va_start(i8* %ap2)
 
-  call void asm sideeffect "# ANCHOR1", ""()
+  call void asm sideeffect "teqi $$zero, 1", ""()
   %arg1 = va_arg i8** %ap, i32
   %e1 = getelementptr [3 x i32], [3 x i32]* @words, i32 0, i32 1
   store volatile i32 %arg1, i32* %e1, align 4
 
-  call void asm sideeffect "# ANCHOR2", ""()
+  call void asm sideeffect "teqi $$zero, 2", ""()
   %arg2 = va_arg i8** %ap, i32
   %e2 = getelementptr [3 x i32], [3 x i32]* @words, i32 0, i32 2
   store volatile i32 %arg2, i32* %e2, align 4
@@ -1011,10 +991,7 @@ entry:
 ; N64-DAG:       daddiu [[VA:\$[0-9]+]], [[SP]], 8
 ; N64-DAG:       sd [[VA]], 0([[SP]])
 
-; Store [[VA]]
-; O32-DAG:       sw [[VA]], 0([[SP]])
-
-; ALL: # ANCHOR1
+; ALL: teqi $zero, 1
 
 ; Increment [[VA]] (and realign pointer for O32)
 ; O32:           lw [[VA:\$[0-9]+]], 0([[SP]])
@@ -1040,18 +1017,17 @@ entry:
 ; O32-DAG:       addiu [[GV:\$[0-9]+]], ${{[0-9]+}}, %lo(dwords)
 ; O32-DAG:       lw [[ARG1:\$[0-9]+]], 0([[VA]])
 ; O32-DAG:       sw [[ARG1]], 8([[GV]])
-; O32-DAG:       lw [[VA:\$[0-9]+]], 0([[SP]])
-; O32-DAG:       addiu [[VA2:\$[0-9]+]], [[VA]], 4
-; O32-DAG:       sw [[VA2]], 0([[SP]])
-; O32-DAG:       lw [[ARG1:\$[0-9]+]], 0([[VA]])
+; O32-DAG:       addiu [[VA3:\$[0-9]+]], [[VA2]], 4
+; O32-DAG:       sw [[VA3]], 0([[SP]])
+; O32-DAG:       lw [[ARG1:\$[0-9]+]], 4([[VA_TMP2]])
 ; O32-DAG:       sw [[ARG1]], 12([[GV]])
 
 ; N32-DAG:       addiu [[GV:\$[0-9]+]], ${{[0-9]+}}, %lo(dwords)
-; N64-DAG:       ld [[GV:\$[0-9]+]], %got_disp(dwords)(
+; N64-DAG:       daddiu [[GV:\$[0-9]+]], ${{[0-9]+}}, %lo(dwords)
 ; NEW-DAG:       ld [[ARG1:\$[0-9]+]], 0([[VA]])
 ; NEW-DAG:       sd [[ARG1]], 8([[GV]])
 
-; ALL: # ANCHOR2
+; ALL: teqi $zero, 2
 
 ; Increment [[VA]] again.
 ; FIXME: We're still aligned from the last one but CodeGen doesn't spot that.
@@ -1072,10 +1048,9 @@ entry:
 ; Load the second argument from the variable portion and copy it to the global.
 ; O32-DAG:       lw [[ARG2:\$[0-9]+]], 0([[VA]])
 ; O32-DAG:       sw [[ARG2]], 16([[GV]])
-; O32-DAG:       lw [[VA:\$[0-9]+]], 0([[SP]])
-; O32-DAG:       addiu [[VA2:\$[0-9]+]], [[VA]], 4
-; O32-DAG:       sw [[VA2]], 0([[SP]])
-; O32-DAG:       lw [[ARG2:\$[0-9]+]], 0([[VA]])
+; O32-DAG:       addiu [[VA3:\$[0-9]+]], [[VA2]], 4
+; O32-DAG:       sw [[VA3]], 0([[SP]])
+; O32-DAG:       lw [[ARG2:\$[0-9]+]], 4([[VA_TMP2]])
 ; O32-DAG:       sw [[ARG2]], 20([[GV]])
 
 ; NEW-DAG:       ld [[ARG2:\$[0-9]+]], 0([[VA2]])
@@ -1085,12 +1060,12 @@ entry:
   %ap2 = bitcast i8** %ap to i8*
   call void @llvm.va_start(i8* %ap2)
 
-  call void asm sideeffect "# ANCHOR1", ""()
+  call void asm sideeffect "teqi $$zero, 1", ""()
   %arg1 = va_arg i8** %ap, i64
   %e1 = getelementptr [3 x i64], [3 x i64]* @dwords, i32 0, i32 1
   store volatile i64 %arg1, i64* %e1, align 8
 
-  call void asm sideeffect "# ANCHOR2", ""()
+  call void asm sideeffect "teqi $$zero, 2", ""()
   %arg2 = va_arg i8** %ap, i64
   %e2 = getelementptr [3 x i64], [3 x i64]* @dwords, i32 0, i32 2
   store volatile i64 %arg2, i64* %e2, align 8

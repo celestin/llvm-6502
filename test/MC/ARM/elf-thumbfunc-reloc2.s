@@ -1,5 +1,5 @@
-// RUN: llvm-mc %s -triple=thumbv7-linux-gnueabi -relocation-model=pic \
-// RUN: -filetype=obj -o - | llvm-readobj -s -sd -r -t | \
+// RUN: llvm-mc %s -triple=thumbv7-linux-gnueabi \
+// RUN: -filetype=obj -o - | llvm-readobj -S --sd -r --symbols | \
 // RUN: FileCheck %s
 
 // We want to test relocatable thumb function call.

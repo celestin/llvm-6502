@@ -19,16 +19,16 @@ module asm "some assembly"
 ; Aliases Test
 ; CHECK: @glob1 = global i32 1
 @glob1 = global i32 1
-; CHECK: @aliased1 = alias i32* @glob1
-@aliased1 = alias i32* @glob1
-; CHECK-NEXT: @aliased2 = internal alias i32* @glob1
-@aliased2 = internal alias i32* @glob1
-; CHECK-NEXT: @aliased3 = alias i32* @glob1
-@aliased3 = external alias i32* @glob1
-; CHECK-NEXT: @aliased4 = weak alias i32* @glob1
-@aliased4 = weak alias i32* @glob1
-; CHECK-NEXT: @aliased5 = weak_odr alias i32* @glob1
-@aliased5 = weak_odr alias i32* @glob1
+; CHECK: @aliased1 = alias i32, i32* @glob1
+@aliased1 = alias i32, i32* @glob1
+; CHECK-NEXT: @aliased2 = internal alias i32, i32* @glob1
+@aliased2 = internal alias i32, i32* @glob1
+; CHECK-NEXT: @aliased3 = alias i32, i32* @glob1
+@aliased3 = external alias i32, i32* @glob1
+; CHECK-NEXT: @aliased4 = weak alias i32, i32* @glob1
+@aliased4 = weak alias i32, i32* @glob1
+; CHECK-NEXT: @aliased5 = weak_odr alias i32, i32* @glob1
+@aliased5 = weak_odr alias i32, i32* @glob1
 
 ;Parameter Attribute Test
 ; CHECK: declare void @ParamAttr1(i8 zeroext)
@@ -41,7 +41,7 @@ declare void @ParamAttr3(i8* sret)
 declare void @ParamAttr4(i8 signext)
 ; CHECK: declare void @ParamAttr5(i8* inreg)
 declare void @ParamAttr5(i8* inreg)
-; CHECK: declare void @ParamAttr6(i8* byval)
+; CHECK: declare void @ParamAttr6(i8* byval(i8))
 declare void @ParamAttr6(i8* byval)
 ; CHECK: declare void @ParamAttr7(i8* noalias)
 declare void @ParamAttr7(i8* noalias)
@@ -51,7 +51,7 @@ declare void @ParamAttr8(i8* nocapture)
 declare void @ParamAttr9(i8* nest noalias nocapture)
 ; CHECK: declare void @ParamAttr10{{[(i8* sret noalias nocapture) | (i8* noalias nocapture sret)]}}
 declare void @ParamAttr10(i8* sret noalias nocapture)
-;CHECK: declare void @ParamAttr11{{[(i8* byval noalias nocapture) | (i8* noalias nocapture byval)]}}
+;CHECK: declare void @ParamAttr11{{[(i8* byval(i8) noalias nocapture) | (i8* noalias nocapture byval(i8))]}}
 declare void @ParamAttr11(i8* byval noalias nocapture)
 ;CHECK: declare void @ParamAttr12{{[(i8* inreg noalias nocapture) | (i8* noalias nocapture inreg)]}}
 declare void @ParamAttr12(i8* inreg noalias nocapture)

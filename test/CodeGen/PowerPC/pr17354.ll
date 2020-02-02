@@ -1,4 +1,4 @@
-; RUN: llc -mcpu=pwr7 -relocation-model=pic <%s | FileCheck %s
+; RUN: llc -verify-machineinstrs -mcpu=pwr7 -relocation-model=pic <%s | FileCheck %s
 
 ; Test that PR17354 is fixed.  We must generate a nop following even
 ; local calls when generating code for shared libraries, to permit
@@ -10,7 +10,7 @@ target triple = "powerpc64-unknown-linux-gnu"
 %struct.CS = type { i32 }
 
 @_ZL3glb = internal global [1 x %struct.CS] zeroinitializer, align 4
-@llvm.global_ctors = appending global [1 x { i32, void ()* }] [{ i32, void ()* } { i32 65535, void ()* @_GLOBAL__I_a }]
+@llvm.global_ctors = appending global [1 x { i32, void ()*, i8* }] [{ i32, void ()*, i8* } { i32 65535, void ()* @_GLOBAL__I_a, i8* null }]
 
 define internal void @__cxx_global_var_init() section ".text.startup" {
 entry:

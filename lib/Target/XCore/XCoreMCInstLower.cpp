@@ -1,14 +1,13 @@
 //===-- XCoreMCInstLower.cpp - Convert XCore MachineInstr to MCInst -------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// \brief This file contains code to lower XCore MachineInstrs to their
+/// This file contains code to lower XCore MachineInstrs to their
 /// corresponding MCInst records.
 ///
 //===----------------------------------------------------------------------===//
@@ -25,12 +24,9 @@
 using namespace llvm;
 
 XCoreMCInstLower::XCoreMCInstLower(class AsmPrinter &asmprinter)
-: Printer(asmprinter) {}
+    : Printer(asmprinter) {}
 
-void XCoreMCInstLower::Initialize(Mangler *M, MCContext *C) {
-  Mang = M;
-  Ctx = C;
-}
+void XCoreMCInstLower::Initialize(MCContext *C) { Ctx = C; }
 
 MCOperand XCoreMCInstLower::LowerSymbolOperand(const MachineOperand &MO,
                                                MachineOperandType MOTy,

@@ -1,9 +1,8 @@
-//===-- MachODump.cpp - Object file dumping utility for llvm --------------===//
+//===- MachODumper.cpp - Object file dumping utility for llvm -------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -11,15 +10,15 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm-readobj.h"
 #include "Error.h"
 #include "ObjDumper.h"
 #include "StackMapPrinter.h"
-#include "StreamWriter.h"
+#include "llvm-readobj.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Object/MachO.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/ScopedPrinter.h"
 
 using namespace llvm;
 using namespace object;
@@ -28,29 +27,38 @@ namespace {
 
 class MachODumper : public ObjDumper {
 public:
-  MachODumper(const MachOObjectFile *Obj, StreamWriter& Writer)
-    : ObjDumper(Writer)
-    , Obj(Obj) { }
+  MachODumper(const MachOObjectFile *Obj, ScopedPrinter &Writer)
+      : ObjDumper(Writer), Obj(Obj) {}
 
   void printFileHeaders() override;
-  void printSections() override;
+  void printSectionHeaders() override;
   void printRelocations() override;
-  void printSymbols() override;
-  void printDynamicSymbols() override;
   void printUnwindInfo() override;
   void printStackMap() const override;
+
+  void printNeededLibraries() override;
+
+  // MachO-specific.
+  void printMachODataInCode() override;
+  void printMachOVersionMin() override;
+  void printMachODysymtab() override;
+  void printMachOSegment() override;
+  void printMachOIndirectSymbols() override;
+  void printMachOLinkerOptions () override;
 
 private:
   template<class MachHeader>
   void printFileHeaders(const MachHeader &Header);
 
+  void printSymbols() override;
+  void printDynamicSymbols() override;
   void printSymbol(const SymbolRef &Symbol);
 
   void printRelocation(const RelocationRef &Reloc);
 
   void printRelocation(const MachOObjectFile *Obj, const RelocationRef &Reloc);
 
-  void printSections(const MachOObjectFile *Obj);
+  void printSectionHeaders(const MachOObjectFile *Obj);
 
   const MachOObjectFile *Obj;
 };
@@ -61,7 +69,7 @@ private:
 namespace llvm {
 
 std::error_code createMachODumper(const object::ObjectFile *Obj,
-                                  StreamWriter &Writer,
+                                  ScopedPrinter &Writer,
                                   std::unique_ptr<ObjDumper> &Result) {
   const MachOObjectFile *MachOObj = dyn_cast<MachOObjectFile>(Obj);
   if (!MachOObj)
@@ -154,6 +162,7 @@ static const EnumEntry<uint32_t> MachOHeaderCpuSubtypesARM[] = {
 
 static const EnumEntry<uint32_t> MachOHeaderCpuSubtypesARM64[] = {
   LLVM_READOBJ_ENUM_ENT(MachO, CPU_SUBTYPE_ARM64_ALL),
+  LLVM_READOBJ_ENUM_ENT(MachO, CPU_SUBTYPE_ARM64E),
 };
 
 static const EnumEntry<uint32_t> MachOHeaderCpuSubtypesSPARC[] = {
@@ -205,6 +214,31 @@ static const EnumEntry<uint32_t> MachOHeaderFlags[] = {
   LLVM_READOBJ_ENUM_ENT(MachO, MH_APP_EXTENSION_SAFE),
 };
 
+static const EnumEntry<unsigned> MachOSectionTypes[] = {
+  { "Regular"                        , MachO::S_REGULAR },
+  { "ZeroFill"                       , MachO::S_ZEROFILL },
+  { "CStringLiterals"                , MachO::S_CSTRING_LITERALS },
+  { "4ByteLiterals"                  , MachO::S_4BYTE_LITERALS },
+  { "8ByteLiterals"                  , MachO::S_8BYTE_LITERALS },
+  { "LiteralPointers"                , MachO::S_LITERAL_POINTERS },
+  { "NonLazySymbolPointers"          , MachO::S_NON_LAZY_SYMBOL_POINTERS },
+  { "LazySymbolPointers"             , MachO::S_LAZY_SYMBOL_POINTERS },
+  { "SymbolStubs"                    , MachO::S_SYMBOL_STUBS },
+  { "ModInitFuncPointers"            , MachO::S_MOD_INIT_FUNC_POINTERS },
+  { "ModTermFuncPointers"            , MachO::S_MOD_TERM_FUNC_POINTERS },
+  { "Coalesced"                      , MachO::S_COALESCED },
+  { "GBZeroFill"                     , MachO::S_GB_ZEROFILL },
+  { "Interposing"                    , MachO::S_INTERPOSING },
+  { "16ByteLiterals"                 , MachO::S_16BYTE_LITERALS },
+  { "DTraceDOF"                      , MachO::S_DTRACE_DOF },
+  { "LazyDylibSymbolPointers"        , MachO::S_LAZY_DYLIB_SYMBOL_POINTERS },
+  { "ThreadLocalRegular"             , MachO::S_THREAD_LOCAL_REGULAR },
+  { "ThreadLocalZerofill"            , MachO::S_THREAD_LOCAL_ZEROFILL },
+  { "ThreadLocalVariables"           , MachO::S_THREAD_LOCAL_VARIABLES },
+  { "ThreadLocalVariablePointers"    , MachO::S_THREAD_LOCAL_VARIABLE_POINTERS },
+  { "ThreadLocalInitFunctionPointers", MachO::S_THREAD_LOCAL_INIT_FUNCTION_POINTERS }
+};
+
 static const EnumEntry<unsigned> MachOSectionAttributes[] = {
   { "LocReloc"         , 1 <<  0 /*S_ATTR_LOC_RELOC          */ },
   { "ExtReloc"         , 1 <<  1 /*S_ATTR_EXT_RELOC          */ },
@@ -231,7 +265,8 @@ static const EnumEntry<unsigned> MachOSymbolFlags[] = {
   { "ReferencedDynamically", 0x10 },
   { "NoDeadStrip",           0x20 },
   { "WeakRef",               0x40 },
-  { "WeakDef",               0x80 }
+  { "WeakDef",               0x80 },
+  { "AltEntry",             0x200 },
 };
 
 static const EnumEntry<unsigned> MachOSymbolTypes[] = {
@@ -255,6 +290,21 @@ namespace {
     uint32_t Flags;
     uint32_t Reserved1;
     uint32_t Reserved2;
+    uint32_t Reserved3;
+  };
+
+  struct MachOSegment {
+    std::string CmdName;
+    std::string SegName;
+    uint64_t cmdsize;
+    uint64_t vmaddr;
+    uint64_t vmsize;
+    uint64_t fileoff;
+    uint64_t filesize;
+    uint32_t maxprot;
+    uint32_t initprot;
+    uint32_t nsects;
+    uint32_t flags;
   };
 
   struct MachOSymbol {
@@ -264,6 +314,18 @@ namespace {
     uint16_t Flags;
     uint64_t Value;
   };
+}
+
+static std::string getMask(uint32_t prot)
+{
+  // TODO (davide): This always assumes prot is valid.
+  // Catch mistakes and report if needed.
+  std::string Prot;
+  Prot = "";
+  Prot += (prot & MachO::VM_PROT_READ) ? "r" : "-";
+  Prot += (prot & MachO::VM_PROT_WRITE) ? "w" : "-";
+  Prot += (prot & MachO::VM_PROT_EXECUTE) ? "x" : "-";
+  return Prot;
 }
 
 static void getSection(const MachOObjectFile *Obj,
@@ -292,8 +354,40 @@ static void getSection(const MachOObjectFile *Obj,
   Section.Flags       = Sect.flags;
   Section.Reserved1   = Sect.reserved1;
   Section.Reserved2   = Sect.reserved2;
+  Section.Reserved3   = Sect.reserved3;
 }
 
+static void getSegment(const MachOObjectFile *Obj,
+                       const MachOObjectFile::LoadCommandInfo &L,
+                       MachOSegment &Segment) {
+  if (!Obj->is64Bit()) {
+    MachO::segment_command SC = Obj->getSegmentLoadCommand(L);
+    Segment.CmdName = "LC_SEGMENT";
+    Segment.SegName = SC.segname;
+    Segment.cmdsize = SC.cmdsize;
+    Segment.vmaddr = SC.vmaddr;
+    Segment.vmsize = SC.vmsize;
+    Segment.fileoff = SC.fileoff;
+    Segment.filesize = SC.filesize;
+    Segment.maxprot = SC.maxprot;
+    Segment.initprot = SC.initprot;
+    Segment.nsects = SC.nsects;
+    Segment.flags = SC.flags;
+    return;
+  }
+  MachO::segment_command_64 SC = Obj->getSegment64LoadCommand(L);
+  Segment.CmdName = "LC_SEGMENT_64";
+  Segment.SegName = SC.segname;
+  Segment.cmdsize = SC.cmdsize;
+  Segment.vmaddr = SC.vmaddr;
+  Segment.vmsize = SC.vmsize;
+  Segment.fileoff = SC.fileoff;
+  Segment.filesize = SC.filesize;
+  Segment.maxprot = SC.maxprot;
+  Segment.initprot = SC.initprot;
+  Segment.nsects = SC.nsects;
+  Segment.flags = SC.flags;
+}
 
 static void getSymbol(const MachOObjectFile *Obj,
                       DataRefImpl DRI,
@@ -359,11 +453,9 @@ void MachODumper::printFileHeaders(const MachHeader &Header) {
   W.printFlags("Flags", Header.flags, makeArrayRef(MachOHeaderFlags));
 }
 
-void MachODumper::printSections() {
-  return printSections(Obj);
-}
+void MachODumper::printSectionHeaders() { return printSectionHeaders(Obj); }
 
-void MachODumper::printSections(const MachOObjectFile *Obj) {
+void MachODumper::printSectionHeaders(const MachOObjectFile *Obj) {
   ListScope Group(W, "Sections");
 
   int SectionIndex = -1;
@@ -373,10 +465,7 @@ void MachODumper::printSections(const MachOObjectFile *Obj) {
     MachOSection MOSection;
     getSection(Obj, Section.getRawDataRefImpl(), MOSection);
     DataRefImpl DR = Section.getRawDataRefImpl();
-
-    StringRef Name;
-    error(Section.getName(Name));
-
+    StringRef Name = unwrapOrError(Obj->getFileName(), Section.getName());
     ArrayRef<char> RawName = Obj->getSectionRawName(DR);
     StringRef SegmentName = Obj->getSectionFinalSegmentName(DR);
     ArrayRef<char> RawSegmentName = Obj->getSectionRawFinalSegmentName(DR);
@@ -392,11 +481,13 @@ void MachODumper::printSections(const MachOObjectFile *Obj) {
     W.printHex("RelocationOffset", MOSection.RelocationTableOffset);
     W.printNumber("RelocationCount", MOSection.NumRelocationTableEntries);
     W.printEnum("Type", MOSection.Flags & 0xFF,
-                makeArrayRef(MachOSectionAttributes));
+                makeArrayRef(MachOSectionTypes));
     W.printFlags("Attributes", MOSection.Flags >> 8,
                  makeArrayRef(MachOSectionAttributes));
     W.printHex("Reserved1", MOSection.Reserved1);
     W.printHex("Reserved2", MOSection.Reserved2);
+    if (Obj->is64Bit())
+      W.printHex("Reserved3", MOSection.Reserved3);
 
     if (opts::SectionRelocations) {
       ListScope D(W, "Relocations");
@@ -414,15 +505,9 @@ void MachODumper::printSections(const MachOObjectFile *Obj) {
       }
     }
 
-    if (opts::SectionData) {
-      bool IsBSS = Section.isBSS();
-      if (!IsBSS) {
-        StringRef Data;
-        error(Section.getContents(Data));
-
-        W.printBinaryBlock("SectionData", Data);
-      }
-    }
+    if (opts::SectionData && !Section.isBSS())
+      W.printBinaryBlock("SectionData", unwrapOrError(Obj->getFileName(),
+                                                      Section.getContents()));
   }
 }
 
@@ -431,9 +516,7 @@ void MachODumper::printRelocations() {
 
   std::error_code EC;
   for (const SectionRef &Section : Obj->sections()) {
-    StringRef Name;
-    error(Section.getName(Name));
-
+    StringRef Name = unwrapOrError(Obj->getFileName(), Section.getName());
     bool PrintedGroup = false;
     for (const RelocationRef &Reloc : Section.relocations()) {
       if (!PrintedGroup) {
@@ -471,15 +554,15 @@ void MachODumper::printRelocation(const MachOObjectFile *Obj,
   if (IsExtern) {
     symbol_iterator Symbol = Reloc.getSymbol();
     if (Symbol != Obj->symbol_end()) {
-      ErrorOr<StringRef> TargetNameOrErr = Symbol->getName();
-      error(TargetNameOrErr.getError());
+      Expected<StringRef> TargetNameOrErr = Symbol->getName();
+      if (!TargetNameOrErr)
+        reportError(TargetNameOrErr.takeError(), Obj->getFileName());
       TargetName = *TargetNameOrErr;
     }
   } else if (!IsScattered) {
     section_iterator SecI = Obj->getRelocationSection(DR);
-    if (SecI != Obj->section_end()) {
-      error(SecI->getName(TargetName));
-    }
+    if (SecI != Obj->section_end())
+      TargetName = unwrapOrError(Obj->getFileName(), SecI->getName());
   }
   if (TargetName.empty())
     TargetName = "-";
@@ -535,17 +618,24 @@ void MachODumper::printDynamicSymbols() {
 
 void MachODumper::printSymbol(const SymbolRef &Symbol) {
   StringRef SymbolName;
-  if (ErrorOr<StringRef> SymbolNameOrErr = Symbol.getName())
+  Expected<StringRef> SymbolNameOrErr = Symbol.getName();
+  if (!SymbolNameOrErr) {
+    // TODO: Actually report errors helpfully.
+    consumeError(SymbolNameOrErr.takeError());
+  } else
     SymbolName = *SymbolNameOrErr;
 
   MachOSymbol MOSymbol;
   getSymbol(Obj, Symbol.getRawDataRefImpl(), MOSymbol);
 
   StringRef SectionName = "";
-  section_iterator SecI(Obj->section_begin());
-  error(Symbol.getSection(SecI));
+  Expected<section_iterator> SecIOrErr = Symbol.getSection();
+  if (!SecIOrErr)
+    reportError(SecIOrErr.takeError(), Obj->getFileName());
+
+  section_iterator SecI = *SecIOrErr;
   if (SecI != Obj->section_end())
-    error(SecI->getName(SectionName));
+    SectionName = unwrapOrError(Obj->getFileName(), SecI->getName());
 
   DictScope D(W, "Symbol");
   W.printNumber("Name", SymbolName, MOSymbol.StringIndex);
@@ -575,7 +665,11 @@ void MachODumper::printStackMap() const {
   object::SectionRef StackMapSection;
   for (auto Sec : Obj->sections()) {
     StringRef Name;
-    Sec.getName(Name);
+    if (Expected<StringRef> NameOrErr = Sec.getName())
+      Name = *NameOrErr;
+    else
+      consumeError(NameOrErr.takeError());
+
     if (Name == "__llvm_stackmaps") {
       StackMapSection = Sec;
       break;
@@ -585,17 +679,211 @@ void MachODumper::printStackMap() const {
   if (StackMapSection == object::SectionRef())
     return;
 
-  StringRef StackMapContents;
-  StackMapSection.getContents(StackMapContents);
-  ArrayRef<uint8_t> StackMapContentsArray(
-      reinterpret_cast<const uint8_t*>(StackMapContents.data()),
-      StackMapContents.size());
+  StringRef StackMapContents =
+      unwrapOrError(Obj->getFileName(), StackMapSection.getContents());
+  ArrayRef<uint8_t> StackMapContentsArray =
+      arrayRefFromStringRef(StackMapContents);
 
   if (Obj->isLittleEndian())
-     prettyPrintStackMap(
-                      llvm::outs(),
-                      StackMapV1Parser<support::little>(StackMapContentsArray));
+    prettyPrintStackMap(
+        W, StackMapParser<support::little>(StackMapContentsArray));
   else
-     prettyPrintStackMap(llvm::outs(),
-                         StackMapV1Parser<support::big>(StackMapContentsArray));
+    prettyPrintStackMap(
+        W, StackMapParser<support::big>(StackMapContentsArray));
+}
+
+void MachODumper::printNeededLibraries() {
+  ListScope D(W, "NeededLibraries");
+
+  using LibsTy = std::vector<StringRef>;
+  LibsTy Libs;
+
+  for (const auto &Command : Obj->load_commands()) {
+    if (Command.C.cmd == MachO::LC_LOAD_DYLIB ||
+        Command.C.cmd == MachO::LC_ID_DYLIB ||
+        Command.C.cmd == MachO::LC_LOAD_WEAK_DYLIB ||
+        Command.C.cmd == MachO::LC_REEXPORT_DYLIB ||
+        Command.C.cmd == MachO::LC_LAZY_LOAD_DYLIB ||
+        Command.C.cmd == MachO::LC_LOAD_UPWARD_DYLIB) {
+      MachO::dylib_command Dl = Obj->getDylibIDLoadCommand(Command);
+      if (Dl.dylib.name < Dl.cmdsize) {
+        auto *P = static_cast<const char*>(Command.Ptr) + Dl.dylib.name;
+        Libs.push_back(P);
+      }
+    }
+  }
+
+  llvm::stable_sort(Libs);
+
+  for (const auto &L : Libs) {
+    W.startLine() << L << "\n";
+  }
+}
+
+void MachODumper::printMachODataInCode() {
+  for (const auto &Load : Obj->load_commands()) {
+    if (Load.C.cmd  == MachO::LC_DATA_IN_CODE) {
+      MachO::linkedit_data_command LLC = Obj->getLinkeditDataLoadCommand(Load);
+      DictScope Group(W, "DataInCode");
+      W.printNumber("Data offset", LLC.dataoff);
+      W.printNumber("Data size", LLC.datasize);
+      ListScope D(W, "Data entries");
+      unsigned NumRegions = LLC.datasize / sizeof(MachO::data_in_code_entry);
+      for (unsigned i = 0; i < NumRegions; ++i) {
+        MachO::data_in_code_entry DICE = Obj->getDataInCodeTableEntry(
+                                                              LLC.dataoff, i);
+        DictScope Group(W, "Entry");
+        W.printNumber("Index", i);
+        W.printNumber("Offset", DICE.offset);
+        W.printNumber("Length", DICE.length);
+        W.printNumber("Kind", DICE.kind);
+      }
+    }
+  }
+}
+
+void MachODumper::printMachOVersionMin() {
+  for (const auto &Load : Obj->load_commands()) {
+    StringRef Cmd;
+    switch (Load.C.cmd) {
+    case MachO::LC_VERSION_MIN_MACOSX:
+      Cmd = "LC_VERSION_MIN_MACOSX";
+      break;
+    case MachO::LC_VERSION_MIN_IPHONEOS:
+      Cmd = "LC_VERSION_MIN_IPHONEOS";
+      break;
+    case MachO::LC_VERSION_MIN_TVOS:
+      Cmd = "LC_VERSION_MIN_TVOS";
+      break;
+    case MachO::LC_VERSION_MIN_WATCHOS:
+      Cmd = "LC_VERSION_MIN_WATCHOS";
+      break;
+    case MachO::LC_BUILD_VERSION:
+      Cmd = "LC_BUILD_VERSION";
+      break;
+    default:
+      continue;
+    }
+
+    DictScope Group(W, "MinVersion");
+    // Handle LC_BUILD_VERSION.
+    if (Load.C.cmd == MachO::LC_BUILD_VERSION) {
+      MachO::build_version_command BVC = Obj->getBuildVersionLoadCommand(Load);
+      W.printString("Cmd", Cmd);
+      W.printNumber("Size", BVC.cmdsize);
+      W.printString("Platform",
+                    MachOObjectFile::getBuildPlatform(BVC.platform));
+      W.printString("Version", MachOObjectFile::getVersionString(BVC.minos));
+      if (BVC.sdk)
+        W.printString("SDK", MachOObjectFile::getVersionString(BVC.sdk));
+      else
+        W.printString("SDK", StringRef("n/a"));
+      continue;
+    }
+
+    MachO::version_min_command VMC = Obj->getVersionMinLoadCommand(Load);
+    W.printString("Cmd", Cmd);
+    W.printNumber("Size", VMC.cmdsize);
+    SmallString<32> Version;
+    Version = utostr(MachOObjectFile::getVersionMinMajor(VMC, false)) + "." +
+              utostr(MachOObjectFile::getVersionMinMinor(VMC, false));
+    uint32_t Update = MachOObjectFile::getVersionMinUpdate(VMC, false);
+    if (Update != 0)
+      Version += "." + utostr(MachOObjectFile::getVersionMinUpdate(VMC, false));
+    W.printString("Version", Version);
+    SmallString<32> SDK;
+    if (VMC.sdk == 0)
+      SDK = "n/a";
+    else {
+      SDK = utostr(MachOObjectFile::getVersionMinMajor(VMC, true)) + "." +
+            utostr(MachOObjectFile::getVersionMinMinor(VMC, true));
+      uint32_t Update = MachOObjectFile::getVersionMinUpdate(VMC, true);
+      if (Update != 0)
+        SDK += "." + utostr(MachOObjectFile::getVersionMinUpdate(VMC, true));
+    }
+    W.printString("SDK", SDK);
+  }
+}
+
+void MachODumper::printMachODysymtab() {
+  for (const auto &Load : Obj->load_commands()) {
+    if (Load.C.cmd == MachO::LC_DYSYMTAB) {
+      MachO::dysymtab_command DLC = Obj->getDysymtabLoadCommand();
+      DictScope Group(W, "Dysymtab");
+      W.printNumber("ilocalsym", DLC.ilocalsym);
+      W.printNumber("nlocalsym", DLC.nlocalsym);
+      W.printNumber("iextdefsym", DLC.iextdefsym);
+      W.printNumber("nextdefsym", DLC.nextdefsym);
+      W.printNumber("iundefsym", DLC.iundefsym);
+      W.printNumber("nundefsym", DLC.nundefsym);
+      W.printNumber("tocoff", DLC.tocoff);
+      W.printNumber("ntoc", DLC.ntoc);
+      W.printNumber("modtaboff", DLC.modtaboff);
+      W.printNumber("nmodtab", DLC.nmodtab);
+      W.printNumber("extrefsymoff", DLC.extrefsymoff);
+      W.printNumber("nextrefsyms", DLC.nextrefsyms);
+      W.printNumber("indirectsymoff", DLC.indirectsymoff);
+      W.printNumber("nindirectsyms", DLC.nindirectsyms);
+      W.printNumber("extreloff", DLC.extreloff);
+      W.printNumber("nextrel", DLC.nextrel);
+      W.printNumber("locreloff", DLC.locreloff);
+      W.printNumber("nlocrel", DLC.nlocrel);
+    }
+  }
+}
+
+void MachODumper::printMachOSegment() {
+  for (const auto &Load : Obj->load_commands()) {
+    if (Load.C.cmd == MachO::LC_SEGMENT || Load.C.cmd == MachO::LC_SEGMENT_64) {
+      MachOSegment MOSegment;
+      getSegment(Obj, Load, MOSegment);
+      DictScope Group(W, "Segment");
+      W.printString("Cmd", MOSegment.CmdName);
+      W.printString("Name", MOSegment.SegName);
+      W.printNumber("Size", MOSegment.cmdsize);
+      W.printHex("vmaddr", MOSegment.vmaddr);
+      W.printHex("vmsize", MOSegment.vmsize);
+      W.printNumber("fileoff", MOSegment.fileoff);
+      W.printNumber("filesize", MOSegment.filesize);
+      W.printString("maxprot", getMask(MOSegment.maxprot));
+      W.printString("initprot", getMask(MOSegment.initprot));
+      W.printNumber("nsects", MOSegment.nsects);
+      W.printHex("flags", MOSegment.flags);
+    }
+  }
+}
+
+void MachODumper::printMachOIndirectSymbols() {
+  for (const auto &Load : Obj->load_commands()) {
+    if (Load.C.cmd == MachO::LC_DYSYMTAB) {
+      MachO::dysymtab_command DLC = Obj->getDysymtabLoadCommand();
+      DictScope Group(W, "Indirect Symbols");
+      W.printNumber("Number", DLC.nindirectsyms);
+      ListScope D(W, "Symbols");
+      for (unsigned i = 0; i < DLC.nindirectsyms; ++i) {
+        DictScope Group(W, "Entry");
+        W.printNumber("Entry Index", i);
+        W.printHex("Symbol Index", Obj->getIndirectSymbolTableEntry(DLC, i));
+      }
+    }
+  }
+}
+
+void MachODumper::printMachOLinkerOptions() {
+  for (const auto &Load : Obj->load_commands()) {
+    if (Load.C.cmd == MachO::LC_LINKER_OPTION) {
+      MachO::linker_option_command LOLC = Obj->getLinkerOptionLoadCommand(Load);
+      DictScope Group(W, "Linker Options");
+      W.printNumber("Size", LOLC.cmdsize);
+      ListScope D(W, "Strings");
+      uint64_t DataSize = LOLC.cmdsize - sizeof(MachO::linker_option_command);
+      const char *P = Load.Ptr + sizeof(MachO::linker_option_command);
+      StringRef Data(P, DataSize);
+      for (unsigned i = 0; i < LOLC.count; ++i) {
+        std::pair<StringRef,StringRef> Split = Data.split('\0');
+        W.printString("Value", Split.first);
+        Data = Split.second;
+      }
+    }
+  }
 }

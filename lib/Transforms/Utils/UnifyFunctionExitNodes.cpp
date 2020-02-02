@@ -1,9 +1,8 @@
 //===- UnifyFunctionExitNodes.cpp - Make all functions have a single exit -===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -15,12 +14,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Transforms/Utils/UnifyFunctionExitNodes.h"
-#include "llvm/ADT/StringExtras.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Type.h"
-#include "llvm/Transforms/Scalar.h"
+#include "llvm/Transforms/Utils.h"
 using namespace llvm;
 
 char UnifyFunctionExitNodes::ID = 0;
@@ -50,11 +48,11 @@ bool UnifyFunctionExitNodes::runOnFunction(Function &F) {
   //
   std::vector<BasicBlock*> ReturningBlocks;
   std::vector<BasicBlock*> UnreachableBlocks;
-  for(Function::iterator I = F.begin(), E = F.end(); I != E; ++I)
-    if (isa<ReturnInst>(I->getTerminator()))
-      ReturningBlocks.push_back(I);
-    else if (isa<UnreachableInst>(I->getTerminator()))
-      UnreachableBlocks.push_back(I);
+  for (BasicBlock &I : F)
+    if (isa<ReturnInst>(I.getTerminator()))
+      ReturningBlocks.push_back(&I);
+    else if (isa<UnreachableInst>(I.getTerminator()))
+      UnreachableBlocks.push_back(&I);
 
   // Then unreachable blocks.
   if (UnreachableBlocks.empty()) {
@@ -62,13 +60,11 @@ bool UnifyFunctionExitNodes::runOnFunction(Function &F) {
   } else if (UnreachableBlocks.size() == 1) {
     UnreachableBlock = UnreachableBlocks.front();
   } else {
-    UnreachableBlock = BasicBlock::Create(F.getContext(), 
+    UnreachableBlock = BasicBlock::Create(F.getContext(),
                                           "UnifiedUnreachableBlock", &F);
     new UnreachableInst(F.getContext(), UnreachableBlock);
 
-    for (std::vector<BasicBlock*>::iterator I = UnreachableBlocks.begin(),
-           E = UnreachableBlocks.end(); I != E; ++I) {
-      BasicBlock *BB = *I;
+    for (BasicBlock *BB : UnreachableBlocks) {
       BB->getInstList().pop_back();  // Remove the unreachable inst.
       BranchInst::Create(UnreachableBlock, BB);
     }
@@ -104,10 +100,7 @@ bool UnifyFunctionExitNodes::runOnFunction(Function &F) {
   // Loop over all of the blocks, replacing the return instruction with an
   // unconditional branch.
   //
-  for (std::vector<BasicBlock*>::iterator I = ReturningBlocks.begin(),
-         E = ReturningBlocks.end(); I != E; ++I) {
-    BasicBlock *BB = *I;
-
+  for (BasicBlock *BB : ReturningBlocks) {
     // Add an incoming element to the PHI node for every return instruction that
     // is merging into this new block...
     if (PN)

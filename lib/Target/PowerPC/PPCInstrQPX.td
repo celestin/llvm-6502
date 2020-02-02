@@ -1,9 +1,8 @@
 //===- PPCInstrQPX.td - The PowerPC QPX Extension --*- tablegen -*-===//
 // 
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // 
 //===----------------------------------------------------------------------===//
 //
@@ -88,11 +87,11 @@ def pre_truncstv4f32 : PatFrag<(ops node:$val, node:$base, node:$offset),
   return cast<StoreSDNode>(N)->getMemoryVT() == MVT::v4f32;
 }]>;
 
-def fround_inexact : PatFrag<(ops node:$val), (fround node:$val), [{
+def fround_inexact : PatFrag<(ops node:$val), (fpround node:$val), [{
   return cast<ConstantSDNode>(N->getOperand(1))->getZExtValue() == 0;
 }]>;
 
-def fround_exact : PatFrag<(ops node:$val), (fround node:$val), [{
+def fround_exact : PatFrag<(ops node:$val), (fpround node:$val), [{
   return cast<ConstantSDNode>(N->getOperand(1))->getZExtValue() == 1;
 }]>;
 
@@ -245,32 +244,30 @@ let Uses = [RM] in {
 
   // SELECT_CC_* - Used to implement the SELECT_CC DAG operation.  Expanded after
   // instruction selection into a branch sequence.
-  let usesCustomInserter = 1 in {
-    def SELECT_CC_QFRC: Pseudo<(outs qfrc:$dst), (ins crrc:$cond, qfrc:$T, qfrc:$F,
-                                i32imm:$BROPC), "#SELECT_CC_QFRC",
-                                []>;
-    def SELECT_CC_QSRC: Pseudo<(outs qsrc:$dst), (ins crrc:$cond, qsrc:$T, qsrc:$F,
-                                i32imm:$BROPC), "#SELECT_CC_QSRC",
-                                []>;
-    def SELECT_CC_QBRC: Pseudo<(outs qbrc:$dst), (ins crrc:$cond, qbrc:$T, qbrc:$F,
-                                i32imm:$BROPC), "#SELECT_CC_QBRC",
-                                []>;
+  def SELECT_CC_QFRC: PPCCustomInserterPseudo<(outs qfrc:$dst), (ins crrc:$cond, qfrc:$T, qfrc:$F,
+                              i32imm:$BROPC), "#SELECT_CC_QFRC",
+                              []>;
+  def SELECT_CC_QSRC: PPCCustomInserterPseudo<(outs qsrc:$dst), (ins crrc:$cond, qsrc:$T, qsrc:$F,
+                              i32imm:$BROPC), "#SELECT_CC_QSRC",
+                              []>;
+  def SELECT_CC_QBRC: PPCCustomInserterPseudo<(outs qbrc:$dst), (ins crrc:$cond, qbrc:$T, qbrc:$F,
+                              i32imm:$BROPC), "#SELECT_CC_QBRC",
+                              []>;
 
-    // SELECT_* pseudo instructions, like SELECT_CC_* but taking condition
-    // register bit directly.
-    def SELECT_QFRC: Pseudo<(outs qfrc:$dst), (ins crbitrc:$cond,
-                            qfrc:$T, qfrc:$F), "#SELECT_QFRC",
-                            [(set v4f64:$dst,
-                                  (select i1:$cond, v4f64:$T, v4f64:$F))]>;
-    def SELECT_QSRC: Pseudo<(outs qsrc:$dst), (ins crbitrc:$cond,
-                            qsrc:$T, qsrc:$F), "#SELECT_QSRC",
-                            [(set v4f32:$dst,
-                                  (select i1:$cond, v4f32:$T, v4f32:$F))]>;
-    def SELECT_QBRC: Pseudo<(outs qbrc:$dst), (ins crbitrc:$cond,
-                            qbrc:$T, qbrc:$F), "#SELECT_QBRC",
-                            [(set v4i1:$dst,
-                                  (select i1:$cond, v4i1:$T, v4i1:$F))]>;
-  }
+  // SELECT_* pseudo instructions, like SELECT_CC_* but taking condition
+  // register bit directly.
+  def SELECT_QFRC: PPCCustomInserterPseudo<(outs qfrc:$dst), (ins crbitrc:$cond,
+                          qfrc:$T, qfrc:$F), "#SELECT_QFRC",
+                          [(set v4f64:$dst,
+                                (select i1:$cond, v4f64:$T, v4f64:$F))]>;
+  def SELECT_QSRC: PPCCustomInserterPseudo<(outs qsrc:$dst), (ins crbitrc:$cond,
+                          qsrc:$T, qsrc:$F), "#SELECT_QSRC",
+                          [(set v4f32:$dst,
+                                (select i1:$cond, v4f32:$T, v4f32:$F))]>;
+  def SELECT_QBRC: PPCCustomInserterPseudo<(outs qbrc:$dst), (ins crbitrc:$cond,
+                          qbrc:$T, qbrc:$F), "#SELECT_QBRC",
+                          [(set v4i1:$dst,
+                                (select i1:$cond, v4i1:$T, v4i1:$F))]>;
 
   // Convert and Round Instructions
   def QVFCTID : QPXX19_Int<4, 814, "qvfctid", int_ppc_qpx_qvfctid>;
@@ -311,11 +308,11 @@ let Uses = [RM] in {
 
   def QVFRIN : XForm_19<4, 392, (outs qfrc:$FRT), (ins qfrc:$FRB),
                         "qvfrin $FRT, $FRB", IIC_FPGeneral,
-                        [(set v4f64:$FRT, (frnd v4f64:$FRB))]>;
+                        [(set v4f64:$FRT, (fround v4f64:$FRB))]>;
   let isCodeGenOnly = 1 in
     def QVFRINs : XForm_19<4, 392, (outs qsrc:$FRT), (ins qsrc:$FRB),
                            "qvfrin $FRT, $FRB", IIC_FPGeneral,
-                           [(set v4f32:$FRT, (frnd v4f32:$FRB))]>;
+                           [(set v4f32:$FRT, (fround v4f32:$FRB))]>;
 
   def QVFRIP : XForm_19<4, 456, (outs qfrc:$FRT), (ins qfrc:$FRB),
                         "qvfrip $FRT, $FRB", IIC_FPGeneral,
@@ -502,14 +499,14 @@ let Uses = [RM] in {
 
   // Load indexed instructions
   let mayLoad = 1 in {
-    def QVLFDX : XForm_1<31, 583,
-                        (outs qfrc:$FRT), (ins memrr:$src),
-                        "qvlfdx $FRT, $src", IIC_LdStLFD,
-                        [(set v4f64:$FRT, (load xoaddr:$src))]>;
+    def QVLFDX : XForm_1_memOp<31, 583,
+                              (outs qfrc:$FRT), (ins memrr:$src),
+                              "qvlfdx $FRT, $src", IIC_LdStLFD,
+                              [(set v4f64:$FRT, (load xoaddr:$src))]>;
     let isCodeGenOnly = 1 in
-    def QVLFDXb : XForm_1<31, 583,
-                        (outs qbrc:$FRT), (ins memrr:$src),
-                        "qvlfdx $FRT, $src", IIC_LdStLFD, []>;
+    def QVLFDXb : XForm_1_memOp<31, 583,
+                                (outs qbrc:$FRT), (ins memrr:$src),
+                                "qvlfdx $FRT, $src", IIC_LdStLFD, []>;
 
     let RC = 1 in
     def QVLFDXA : XForm_1<31, 583,
@@ -527,10 +524,10 @@ let Uses = [RM] in {
                         (outs qfrc:$FRT), (ins memrr:$src),
                         "qvlfduxa $FRT, $src", IIC_LdStLFD, []>;
 
-    def QVLFSX : XForm_1<31, 519,
-                        (outs qfrc:$FRT), (ins memrr:$src),
-                        "qvlfsx $FRT, $src", IIC_LdStLFD,
-                        [(set v4f64:$FRT, (extloadv4f32 xoaddr:$src))]>;
+    def QVLFSX : XForm_1_memOp<31, 519,
+                              (outs qfrc:$FRT), (ins memrr:$src),
+                              "qvlfsx $FRT, $src", IIC_LdStLFD,
+                              [(set v4f64:$FRT, (extloadv4f32 xoaddr:$src))]>;
 
     let isCodeGenOnly = 1 in
     def QVLFSXb : XForm_1<31, 519,
@@ -538,10 +535,10 @@ let Uses = [RM] in {
                         "qvlfsx $FRT, $src", IIC_LdStLFD,
                         [(set v4i1:$FRT, (PPCqvlfsb xoaddr:$src))]>;
     let isCodeGenOnly = 1 in
-    def QVLFSXs : XForm_1<31, 519,
-                        (outs qsrc:$FRT), (ins memrr:$src),
-                        "qvlfsx $FRT, $src", IIC_LdStLFD,
-                        [(set v4f32:$FRT, (load xoaddr:$src))]>;
+    def QVLFSXs : XForm_1_memOp<31, 519,
+                                (outs qsrc:$FRT), (ins memrr:$src),
+                                "qvlfsx $FRT, $src", IIC_LdStLFD,
+                                [(set v4f32:$FRT, (load xoaddr:$src))]>;
 
     let RC = 1 in
     def QVLFSXA : XForm_1<31, 519,
@@ -634,12 +631,12 @@ let Uses = [RM] in {
 
   // Store indexed instructions
   let mayStore = 1 in {
-    def QVSTFDX : XForm_8<31, 711,
+    def QVSTFDX : XForm_8_memOp<31, 711,
                         (outs), (ins qfrc:$FRT, memrr:$dst),
                         "qvstfdx $FRT, $dst", IIC_LdStSTFD,
                         [(store qfrc:$FRT, xoaddr:$dst)]>;
     let isCodeGenOnly = 1 in
-    def QVSTFDXb : XForm_8<31, 711,
+    def QVSTFDXb : XForm_8_memOp<31, 711,
                         (outs), (ins qbrc:$FRT, memrr:$dst),
                         "qvstfdx $FRT, $dst", IIC_LdStSTFD, []>;
 
@@ -675,12 +672,12 @@ let Uses = [RM] in {
                         (outs), (ins qfrc:$FRT, memrr:$dst),
                         "qvstfduxia $FRT, $dst", IIC_LdStSTFD, []>;
 
-    def QVSTFSX : XForm_8<31, 647,
+    def QVSTFSX : XForm_8_memOp<31, 647,
                         (outs), (ins qfrc:$FRT, memrr:$dst),
                         "qvstfsx $FRT, $dst", IIC_LdStSTFD,
                         [(truncstorev4f32 qfrc:$FRT, xoaddr:$dst)]>;
     let isCodeGenOnly = 1 in
-    def QVSTFSXs : XForm_8<31, 647,
+    def QVSTFSXs : XForm_8_memOp<31, 647,
                          (outs), (ins qsrc:$FRT, memrr:$dst),
                          "qvstfsx $FRT, $dst", IIC_LdStSTFD,
                          [(store qsrc:$FRT, xoaddr:$dst)]>;
@@ -839,31 +836,31 @@ def : Pat<(v4f64 (scalar_to_vector f64:$A)),
 def : Pat<(v4f32 (scalar_to_vector f32:$A)),
           (INSERT_SUBREG (v4f32 (IMPLICIT_DEF)), $A, sub_64)>;
 
-def : Pat<(f64 (vector_extract v4f64:$S, 0)),
+def : Pat<(f64 (extractelt v4f64:$S, 0)),
           (EXTRACT_SUBREG $S, sub_64)>;
-def : Pat<(f32 (vector_extract v4f32:$S, 0)),
+def : Pat<(f32 (extractelt v4f32:$S, 0)),
           (EXTRACT_SUBREG $S, sub_64)>;
 
-def : Pat<(f64 (vector_extract v4f64:$S, 1)),
+def : Pat<(f64 (extractelt v4f64:$S, 1)),
           (EXTRACT_SUBREG (QVESPLATI $S, 1), sub_64)>;
-def : Pat<(f64 (vector_extract v4f64:$S, 2)),
+def : Pat<(f64 (extractelt v4f64:$S, 2)),
           (EXTRACT_SUBREG (QVESPLATI $S, 2), sub_64)>;
-def : Pat<(f64 (vector_extract v4f64:$S, 3)),
+def : Pat<(f64 (extractelt v4f64:$S, 3)),
           (EXTRACT_SUBREG (QVESPLATI $S, 3), sub_64)>;
 
-def : Pat<(f32 (vector_extract v4f32:$S, 1)),
+def : Pat<(f32 (extractelt v4f32:$S, 1)),
           (EXTRACT_SUBREG (QVESPLATIs $S, 1), sub_64)>;
-def : Pat<(f32 (vector_extract v4f32:$S, 2)),
+def : Pat<(f32 (extractelt v4f32:$S, 2)),
           (EXTRACT_SUBREG (QVESPLATIs $S, 2), sub_64)>;
-def : Pat<(f32 (vector_extract v4f32:$S, 3)),
+def : Pat<(f32 (extractelt v4f32:$S, 3)),
           (EXTRACT_SUBREG (QVESPLATIs $S, 3), sub_64)>;
 
-def : Pat<(f64 (vector_extract v4f64:$S, i64:$F)),
+def : Pat<(f64 (extractelt v4f64:$S, i64:$F)),
           (EXTRACT_SUBREG (QVFPERM $S, $S,
                                    (QVLPCLSXint (RLDICR $F, 2,
                                                         /* 63-2 = */ 61))),
                           sub_64)>;
-def : Pat<(f32 (vector_extract v4f32:$S, i64:$F)),
+def : Pat<(f32 (extractelt v4f32:$S, i64:$F)),
           (EXTRACT_SUBREG (QVFPERMs $S, $S,
                                     (QVLPCLSXint (RLDICR $F, 2,
                                                          /* 63-2 = */ 61))),
@@ -1103,7 +1100,7 @@ def : Pat<(xor v4i1:$FRA, v4i1:$FRB),
 def : Pat<(not v4i1:$FRA),
           (QVFLOGICALb $FRA, $FRA, (i32 10))>;
 
-def : Pat<(v4f64 (fextend v4f32:$src)),
+def : Pat<(v4f64 (fpextend v4f32:$src)),
           (COPY_TO_REGCLASS $src, QFRC)>;
 
 def : Pat<(v4f32 (fround_exact v4f64:$src)),
@@ -1115,40 +1112,64 @@ def : Pat<(v4f64 (PPCqbflt v4i1:$src)),
           (COPY_TO_REGCLASS $src, QFRC)>;
 
 def : Pat<(v4f64 (selectcc i1:$lhs, i1:$rhs, v4f64:$tval, v4f64:$fval, SETLT)),
+          (SELECT_QFRC (CRANDC $lhs, $rhs), $tval, $fval)>;
+def : Pat<(v4f64 (selectcc i1:$lhs, i1:$rhs, v4f64:$tval, v4f64:$fval, SETULT)),
           (SELECT_QFRC (CRANDC $rhs, $lhs), $tval, $fval)>;
 def : Pat<(v4f64 (selectcc i1:$lhs, i1:$rhs, v4f64:$tval, v4f64:$fval, SETLE)),
+          (SELECT_QFRC (CRORC  $lhs, $rhs), $tval, $fval)>;
+def : Pat<(v4f64 (selectcc i1:$lhs, i1:$rhs, v4f64:$tval, v4f64:$fval, SETULE)),
           (SELECT_QFRC (CRORC  $rhs, $lhs), $tval, $fval)>;
 def : Pat<(v4f64 (selectcc i1:$lhs, i1:$rhs, v4f64:$tval, v4f64:$fval, SETEQ)),
           (SELECT_QFRC (CREQV $lhs, $rhs), $tval, $fval)>;
 def : Pat<(v4f64 (selectcc i1:$lhs, i1:$rhs, v4f64:$tval, v4f64:$fval, SETGE)),
+          (SELECT_QFRC (CRORC  $rhs, $lhs), $tval, $fval)>;
+def : Pat<(v4f64 (selectcc i1:$lhs, i1:$rhs, v4f64:$tval, v4f64:$fval, SETUGE)),
           (SELECT_QFRC (CRORC  $lhs, $rhs), $tval, $fval)>;
 def : Pat<(v4f64 (selectcc i1:$lhs, i1:$rhs, v4f64:$tval, v4f64:$fval, SETGT)),
+          (SELECT_QFRC (CRANDC $rhs, $lhs), $tval, $fval)>;
+def : Pat<(v4f64 (selectcc i1:$lhs, i1:$rhs, v4f64:$tval, v4f64:$fval, SETUGT)),
           (SELECT_QFRC (CRANDC $lhs, $rhs), $tval, $fval)>;
 def : Pat<(v4f64 (selectcc i1:$lhs, i1:$rhs, v4f64:$tval, v4f64:$fval, SETNE)),
           (SELECT_QFRC (CRXOR $lhs, $rhs), $tval, $fval)>;
 
 def : Pat<(v4f32 (selectcc i1:$lhs, i1:$rhs, v4f32:$tval, v4f32:$fval, SETLT)),
+          (SELECT_QSRC (CRANDC $lhs, $rhs), $tval, $fval)>;
+def : Pat<(v4f32 (selectcc i1:$lhs, i1:$rhs, v4f32:$tval, v4f32:$fval, SETULT)),
           (SELECT_QSRC (CRANDC $rhs, $lhs), $tval, $fval)>;
 def : Pat<(v4f32 (selectcc i1:$lhs, i1:$rhs, v4f32:$tval, v4f32:$fval, SETLE)),
+          (SELECT_QSRC (CRORC  $lhs, $rhs), $tval, $fval)>;
+def : Pat<(v4f32 (selectcc i1:$lhs, i1:$rhs, v4f32:$tval, v4f32:$fval, SETULE)),
           (SELECT_QSRC (CRORC  $rhs, $lhs), $tval, $fval)>;
 def : Pat<(v4f32 (selectcc i1:$lhs, i1:$rhs, v4f32:$tval, v4f32:$fval, SETEQ)),
           (SELECT_QSRC (CREQV $lhs, $rhs), $tval, $fval)>;
 def : Pat<(v4f32 (selectcc i1:$lhs, i1:$rhs, v4f32:$tval, v4f32:$fval, SETGE)),
+          (SELECT_QSRC (CRORC  $rhs, $lhs), $tval, $fval)>;
+def : Pat<(v4f32 (selectcc i1:$lhs, i1:$rhs, v4f32:$tval, v4f32:$fval, SETUGE)),
           (SELECT_QSRC (CRORC  $lhs, $rhs), $tval, $fval)>;
 def : Pat<(v4f32 (selectcc i1:$lhs, i1:$rhs, v4f32:$tval, v4f32:$fval, SETGT)),
+          (SELECT_QSRC (CRANDC $rhs, $lhs), $tval, $fval)>;
+def : Pat<(v4f32 (selectcc i1:$lhs, i1:$rhs, v4f32:$tval, v4f32:$fval, SETUGT)),
           (SELECT_QSRC (CRANDC $lhs, $rhs), $tval, $fval)>;
 def : Pat<(v4f32 (selectcc i1:$lhs, i1:$rhs, v4f32:$tval, v4f32:$fval, SETNE)),
           (SELECT_QSRC (CRXOR $lhs, $rhs), $tval, $fval)>;
 
 def : Pat<(v4i1 (selectcc i1:$lhs, i1:$rhs, v4i1:$tval, v4i1:$fval, SETLT)),
+          (SELECT_QBRC (CRANDC $lhs, $rhs), $tval, $fval)>;
+def : Pat<(v4i1 (selectcc i1:$lhs, i1:$rhs, v4i1:$tval, v4i1:$fval, SETULT)),
           (SELECT_QBRC (CRANDC $rhs, $lhs), $tval, $fval)>;
 def : Pat<(v4i1 (selectcc i1:$lhs, i1:$rhs, v4i1:$tval, v4i1:$fval, SETLE)),
+          (SELECT_QBRC (CRORC  $lhs, $rhs), $tval, $fval)>;
+def : Pat<(v4i1 (selectcc i1:$lhs, i1:$rhs, v4i1:$tval, v4i1:$fval, SETULE)),
           (SELECT_QBRC (CRORC  $rhs, $lhs), $tval, $fval)>;
 def : Pat<(v4i1 (selectcc i1:$lhs, i1:$rhs, v4i1:$tval, v4i1:$fval, SETEQ)),
           (SELECT_QBRC (CREQV $lhs, $rhs), $tval, $fval)>;
 def : Pat<(v4i1 (selectcc i1:$lhs, i1:$rhs, v4i1:$tval, v4i1:$fval, SETGE)),
+          (SELECT_QBRC (CRORC  $rhs, $lhs), $tval, $fval)>;
+def : Pat<(v4i1 (selectcc i1:$lhs, i1:$rhs, v4i1:$tval, v4i1:$fval, SETUGE)),
           (SELECT_QBRC (CRORC  $lhs, $rhs), $tval, $fval)>;
 def : Pat<(v4i1 (selectcc i1:$lhs, i1:$rhs, v4i1:$tval, v4i1:$fval, SETGT)),
+          (SELECT_QBRC (CRANDC $rhs, $lhs), $tval, $fval)>;
+def : Pat<(v4i1 (selectcc i1:$lhs, i1:$rhs, v4i1:$tval, v4i1:$fval, SETUGT)),
           (SELECT_QBRC (CRANDC $lhs, $rhs), $tval, $fval)>;
 def : Pat<(v4i1 (selectcc i1:$lhs, i1:$rhs, v4i1:$tval, v4i1:$fval, SETNE)),
           (SELECT_QBRC (CRXOR $lhs, $rhs), $tval, $fval)>;

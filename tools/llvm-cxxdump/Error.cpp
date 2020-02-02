@@ -1,9 +1,8 @@
-//===- Error.cxx - system_error extensions for llvm-cxxdump -----*- C++ -*-===//
+//===- Error.cpp - system_error extensions for llvm-cxxdump -----*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -17,9 +16,12 @@
 using namespace llvm;
 
 namespace {
+// FIXME: This class is only here to support the transition to llvm::Error. It
+// will be removed once this transition is complete. Clients should prefer to
+// deal with the Error value directly, rather than converting to error_code.
 class cxxdump_error_category : public std::error_category {
 public:
-  const char *name() const LLVM_NOEXCEPT override { return "llvm.cxxdump"; }
+  const char *name() const noexcept override { return "llvm.cxxdump"; }
   std::string message(int ev) const override {
     switch (static_cast<cxxdump_error>(ev)) {
     case cxxdump_error::success:

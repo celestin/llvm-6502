@@ -1,4 +1,4 @@
-; RUN: llc < %s -mtriple=powerpc64-unknown-linux-gnu -mcpu=pwr7
+; RUN: llc -verify-machineinstrs < %s -mtriple=powerpc64-unknown-linux-gnu -mcpu=pwr7
 
 define void @test1(i1 %x, i8 %x2, i8* %x3, i64 %x4) {
 entry:
@@ -14,4 +14,21 @@ if.then:
 if.end:
   store i8 %bf.set, i8* %x3, align 4
   ret void
+}
+
+; A BUILD_VECTOR of 1 element caused a crash in combineBVOfConsecutiveLoads()
+; Test that this is no longer the case
+define signext i32 @test2() {
+entry:
+  %retval = alloca i32, align 4
+  %__a = alloca i128, align 16
+  %b = alloca i64, align 8
+  store i32 0, i32* %retval, align 4
+  %0 = load i128, i128* %__a, align 16
+  %splat.splatinsert = insertelement <1 x i128> undef, i128 %0, i32 0
+  %splat.splat = shufflevector <1 x i128> %splat.splatinsert, <1 x i128> undef, <1 x i32> zeroinitializer
+  %1 = bitcast <1 x i128> %splat.splat to <2 x i64>
+  %2 = extractelement <2 x i64> %1, i32 0
+  store i64 %2, i64* %b, align 8
+  ret i32 0
 }

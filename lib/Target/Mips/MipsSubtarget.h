@@ -1,9 +1,8 @@
 //===-- MipsSubtarget.h - Define Subtarget for the Mips ---------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -18,11 +17,15 @@
 #include "MipsFrameLowering.h"
 #include "MipsISelLowering.h"
 #include "MipsInstrInfo.h"
+#include "llvm/CodeGen/SelectionDAGTargetInfo.h"
+#include "llvm/CodeGen/TargetSubtargetInfo.h"
+#include "llvm/CodeGen/GlobalISel/CallLowering.h"
+#include "llvm/CodeGen/GlobalISel/LegalizerInfo.h"
+#include "llvm/CodeGen/GlobalISel/RegisterBankInfo.h"
+#include "llvm/CodeGen/GlobalISel/InstructionSelector.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/MC/MCInstrItineraries.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Target/TargetSelectionDAGInfo.h"
-#include "llvm/Target/TargetSubtargetInfo.h"
 #include <string>
 
 #define GET_SUBTARGETINFO_HEADER
@@ -42,8 +45,29 @@ class MipsSubtarget : public MipsGenSubtargetInfo {
     Mips3, Mips4, Mips5, Mips64, Mips64r2, Mips64r3, Mips64r5, Mips64r6
   };
 
+  enum class CPU { P5600 };
+
+  // Used to avoid printing dsp warnings multiple times.
+  static bool DspWarningPrinted;
+
+  // Used to avoid printing msa warnings multiple times.
+  static bool MSAWarningPrinted;
+
+  // Used to avoid printing crc warnings multiple times.
+  static bool CRCWarningPrinted;
+
+  // Used to avoid printing ginv warnings multiple times.
+  static bool GINVWarningPrinted;
+
+  // Used to avoid printing virt warnings multiple times.
+  static bool VirtWarningPrinted;
+
   // Mips architecture version
   MipsArchEnum MipsArchVersion;
+
+  // Processor implementation (unused but required to exist by
+  // tablegen-erated code).
+  CPU ProcImpl;
 
   // IsLittle - The target is Little Endian
   bool IsLittle;
@@ -62,6 +86,9 @@ class MipsSubtarget : public MipsGenSubtargetInfo {
   // NoABICalls - Disable SVR4-style position-independent code.
   bool NoABICalls;
 
+  // Abs2008 - Use IEEE 754-2008 abs.fmt instruction.
+  bool Abs2008;
+
   // IsFP64bit - The target processor has 64-bit floating point registers.
   bool IsFP64bit;
 
@@ -72,8 +99,11 @@ class MipsSubtarget : public MipsGenSubtargetInfo {
   // IsNan2008 - IEEE 754-2008 NaN encoding.
   bool IsNaN2008bit;
 
-  // IsFP64bit - General-purpose registers are 64 bits wide
+  // IsGP64bit - General-purpose registers are 64 bits wide
   bool IsGP64bit;
+
+  // IsPTR64bit - Pointers are 64 bit wide
+  bool IsPTR64bit;
 
   // HasVFPU - Processor has a vector floating point unit.
   bool HasVFPU;
@@ -110,14 +140,11 @@ class MipsSubtarget : public MipsGenSubtargetInfo {
   // Mips16 hard float
   bool InMips16HardFloat;
 
-  // PreviousInMips16 -- the function we just processed was in Mips 16 Mode
-  bool PreviousInMips16Mode;
-
   // InMicroMips -- can process MicroMips instructions
   bool InMicroMipsMode;
 
-  // HasDSP, HasDSPR2 -- supports DSP ASE.
-  bool HasDSP, HasDSPR2;
+  // HasDSP, HasDSPR2, HasDSPR3 -- supports DSP ASE.
+  bool HasDSP, HasDSPR2, HasDSPR3;
 
   // Allow mixed Mips16 and Mips32 in one source file
   bool AllowMixed16_32;
@@ -130,6 +157,48 @@ class MipsSubtarget : public MipsGenSubtargetInfo {
   // HasMSA -- supports MSA ASE.
   bool HasMSA;
 
+  // UseTCCInDIV -- Enables the use of trapping in the assembler.
+  bool UseTCCInDIV;
+
+  // Sym32 -- On Mips64 symbols are 32 bits.
+  bool HasSym32;
+
+  // HasEVA -- supports EVA ASE.
+  bool HasEVA;
+
+  // nomadd4 - disables generation of 4-operand madd.s, madd.d and
+  // related instructions.
+  bool DisableMadd4;
+
+  // HasMT -- support MT ASE.
+  bool HasMT;
+
+  // HasCRC -- supports R6 CRC ASE
+  bool HasCRC;
+
+  // HasVirt -- supports Virtualization ASE
+  bool HasVirt;
+
+  // HasGINV -- supports R6 Global INValidate ASE
+  bool HasGINV;
+
+  // Use hazard variants of the jump register instructions for indirect
+  // function calls and jump tables.
+  bool UseIndirectJumpsHazard;
+
+  // Disable use of the `jal` instruction.
+  bool UseLongCalls = false;
+
+  // Assume 32-bit GOT.
+  bool UseXGOT = false;
+
+  /// The minimum alignment known to hold of the stack frame on
+  /// entry to the function and which must be maintained by every function.
+  Align stackAlignment;
+
+  /// The overridden stack alignment.
+  MaybeAlign StackAlignOverride;
+
   InstrItineraryData InstrItins;
 
   // We can override the determination of whether we are in mips16 mode
@@ -140,19 +209,18 @@ class MipsSubtarget : public MipsGenSubtargetInfo {
 
   Triple TargetTriple;
 
-  const TargetSelectionDAGInfo TSInfo;
+  const SelectionDAGTargetInfo TSInfo;
   std::unique_ptr<const MipsInstrInfo> InstrInfo;
   std::unique_ptr<const MipsFrameLowering> FrameLowering;
   std::unique_ptr<const MipsTargetLowering> TLInfo;
 
 public:
+  bool isPositionIndependent() const;
   /// This overrides the PostRAScheduler bit in the SchedModel for each CPU.
   bool enablePostRAScheduler() const override;
   void getCriticalPathRCs(RegClassVector &CriticalPathRCs) const override;
   CodeGenOpt::Level getOptLevelToEnablePostRAScheduler() const override;
 
-  /// Only O32 and EABI supported right now.
-  bool isABI_EABI() const;
   bool isABI_N64() const;
   bool isABI_N32() const;
   bool isABI_O32() const;
@@ -161,8 +229,8 @@ public:
 
   /// This constructor initializes the data members to match that
   /// of the specified triple.
-  MipsSubtarget(const Triple &TT, const std::string &CPU, const std::string &FS,
-                bool little, const MipsTargetMachine &TM);
+  MipsSubtarget(const Triple &TT, StringRef CPU, StringRef FS, bool little,
+                const MipsTargetMachine &TM, MaybeAlign StackAlignOverride);
 
   /// ParseSubtargetFeatures - Parses features string setting specified
   /// subtarget options.  Definition of function is auto generated by tblgen.
@@ -210,10 +278,17 @@ public:
   bool useOddSPReg() const { return UseOddSPReg; }
   bool noOddSPReg() const { return !UseOddSPReg; }
   bool isNaN2008() const { return IsNaN2008bit; }
+  bool inAbs2008Mode() const { return Abs2008; }
   bool isGP64bit() const { return IsGP64bit; }
   bool isGP32bit() const { return !IsGP64bit; }
   unsigned getGPRSizeInBytes() const { return isGP64bit() ? 8 : 4; }
+  bool isPTR64bit() const { return IsPTR64bit; }
+  bool isPTR32bit() const { return !IsPTR64bit; }
+  bool hasSym32() const {
+    return (HasSym32 && isABI_N64()) || isABI_N32() || isABI_O32();
+  }
   bool isSingleFloat() const { return IsSingleFloat; }
+  bool isTargetELF() const { return TargetTriple.isOSBinFormatELF(); }
   bool hasVFPU() const { return HasVFPU; }
   bool inMips16Mode() const { return InMips16Mode; }
   bool inMips16ModeDefault() const {
@@ -226,19 +301,35 @@ public:
   bool inMips16HardFloat() const {
     return inMips16Mode() && InMips16HardFloat;
   }
-  bool inMicroMipsMode() const { return InMicroMipsMode; }
-  bool inMicroMips32r6Mode() const { return InMicroMipsMode && hasMips32r6(); }
+  bool inMicroMipsMode() const { return InMicroMipsMode && !InMips16Mode; }
+  bool inMicroMips32r6Mode() const {
+    return inMicroMipsMode() && hasMips32r6();
+  }
   bool hasDSP() const { return HasDSP; }
   bool hasDSPR2() const { return HasDSPR2; }
+  bool hasDSPR3() const { return HasDSPR3; }
   bool hasMSA() const { return HasMSA; }
+  bool disableMadd4() const { return DisableMadd4; }
+  bool hasEVA() const { return HasEVA; }
+  bool hasMT() const { return HasMT; }
+  bool hasCRC() const { return HasCRC; }
+  bool hasVirt() const { return HasVirt; }
+  bool hasGINV() const { return HasGINV; }
+  bool useIndirectJumpsHazard() const {
+    return UseIndirectJumpsHazard && hasMips32r2();
+  }
   bool useSmallSection() const { return UseSmallSection; }
 
-  bool hasStandardEncoding() const { return !inMips16Mode(); }
+  bool hasStandardEncoding() const { return !InMips16Mode && !InMicroMipsMode; }
 
   bool useSoftFloat() const { return IsSoftFloat; }
 
+  bool useLongCalls() const { return UseLongCalls; }
+
+  bool useXGOT() const { return UseXGOT; }
+
   bool enableLongBranchPass() const {
-    return hasStandardEncoding() || allowMixed16_32();
+    return hasStandardEncoding() || inMicroMipsMode() || allowMixed16_32();
   }
 
   /// Features related to the presence of specific instructions.
@@ -252,11 +343,13 @@ public:
 
   bool isTargetNaCl() const { return TargetTriple.isOSNaCl(); }
 
+  bool isXRaySupported() const override { return true; }
+
   // for now constant islands are on for the whole compilation unit but we only
   // really use them if in addition we are in mips16 mode
   static bool useConstantIslands();
 
-  unsigned stackAlignment() const { return hasMips64() ? 16 : 8; }
+  Align getStackAlignment() const { return stackAlignment; }
 
   // Grab relocation model
   Reloc::Model getRelocationModel() const;
@@ -275,7 +368,7 @@ public:
   void setHelperClassesMips16();
   void setHelperClassesMipsSE();
 
-  const TargetSelectionDAGInfo *getSelectionDAGInfo() const override {
+  const SelectionDAGTargetInfo *getSelectionDAGInfo() const override {
     return &TSInfo;
   }
   const MipsInstrInfo *getInstrInfo() const override { return InstrInfo.get(); }
@@ -291,6 +384,19 @@ public:
   const InstrItineraryData *getInstrItineraryData() const override {
     return &InstrItins;
   }
+
+protected:
+  // GlobalISel related APIs.
+  std::unique_ptr<CallLowering> CallLoweringInfo;
+  std::unique_ptr<LegalizerInfo> Legalizer;
+  std::unique_ptr<RegisterBankInfo> RegBankInfo;
+  std::unique_ptr<InstructionSelector> InstSelector;
+
+public:
+  const CallLowering *getCallLowering() const override;
+  const LegalizerInfo *getLegalizerInfo() const override;
+  const RegisterBankInfo *getRegBankInfo() const override;
+  InstructionSelector *getInstructionSelector() const override;
 };
 } // End llvm namespace
 

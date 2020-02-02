@@ -1,13 +1,9 @@
-; RUN: opt < %s -separate-const-offset-from-gep -reassociate-geps-verify-no-dead-code -S | FileCheck %s
+; RUN: opt < %s -mtriple=nvptx64-nvidia-cuda -separate-const-offset-from-gep \
+; RUN:       -reassociate-geps-verify-no-dead-code -S | FileCheck %s
 
 ; Several unit tests for -separate-const-offset-from-gep. The transformation
 ; heavily relies on TargetTransformInfo, so we put these tests under
 ; target-specific folders.
-
-target datalayout = "e-m:e-i64:64-f80:128-n8:16:32:64-S128"
-; target triple is necessary; otherwise TargetTransformInfo rejects any
-; addressing mode.
-target triple = "nvptx64-unknown-unknown"
 
 %struct.S = type { float, double }
 
@@ -44,7 +40,7 @@ entry:
 ; CHECK: add i32 %j, -2
 ; CHECK: sext
 ; CHECK: getelementptr [32 x [32 x float]], [32 x [32 x float]]* @float_2d_array, i64 0, i64 %{{[a-zA-Z0-9]+}}, i64 %{{[a-zA-Z0-9]+}}
-; CHECK: getelementptr float, float* %{{[a-zA-Z0-9]+}}, i64 32
+; CHECK: getelementptr inbounds float, float* %{{[a-zA-Z0-9]+}}, i64 32
 
 ; We should be able to trace into sext/zext if it can be distributed to both
 ; operands, e.g., sext (add nsw a, b) == add nsw (sext a), (sext b)
@@ -65,7 +61,7 @@ define float* @ext_add_no_overflow(i64 %a, i32 %b, i64 %c, i32 %d) {
 }
 ; CHECK-LABEL: @ext_add_no_overflow(
 ; CHECK: [[BASE_PTR:%[a-zA-Z0-9]+]] = getelementptr [32 x [32 x float]], [32 x [32 x float]]* @float_2d_array, i64 0, i64 %{{[a-zA-Z0-9]+}}, i64 %{{[a-zA-Z0-9]+}}
-; CHECK: getelementptr float, float* [[BASE_PTR]], i64 33
+; CHECK: getelementptr inbounds float, float* [[BASE_PTR]], i64 33
 
 ; Verifies we handle nested sext/zext correctly.
 define void @sext_zext(i32 %a, i32 %b, float** %out1, float** %out2) {
@@ -110,7 +106,7 @@ entry:
 }
 ; CHECK-LABEL: @sext_or(
 ; CHECK: [[BASE_PTR:%[a-zA-Z0-9]+]] = getelementptr [32 x [32 x float]], [32 x [32 x float]]* @float_2d_array, i64 0, i64 %{{[a-zA-Z0-9]+}}, i64 %{{[a-zA-Z0-9]+}}
-; CHECK: getelementptr float, float* [[BASE_PTR]], i64 32
+; CHECK: getelementptr inbounds float, float* [[BASE_PTR]], i64 32
 
 ; The subexpression (b + 5) is used in both "i = a + (b + 5)" and "*out = b +
 ; 5". When extracting the constant offset 5, make sure "*out = b + 5" isn't
@@ -125,7 +121,7 @@ entry:
 }
 ; CHECK-LABEL: @expr(
 ; CHECK: [[BASE_PTR:%[a-zA-Z0-9]+]] = getelementptr [32 x [32 x float]], [32 x [32 x float]]* @float_2d_array, i64 0, i64 %{{[a-zA-Z0-9]+}}, i64 0
-; CHECK: getelementptr float, float* [[BASE_PTR]], i64 160
+; CHECK: getelementptr inbounds float, float* [[BASE_PTR]], i64 160
 ; CHECK: store i64 %b5, i64* %out
 
 ; d + sext(a +nsw (b +nsw (c +nsw 8))) => (d + sext(a) + sext(b) + sext(c)) + 8
@@ -143,7 +139,7 @@ entry:
 ; CHECK: sext i32
 ; CHECK: sext i32
 ; CHECK: sext i32
-; CHECK: getelementptr float, float* %{{[a-zA-Z0-9]+}}, i64 8
+; CHECK: getelementptr inbounds float, float* %{{[a-zA-Z0-9]+}}, i64 8
 
 ; Verifies we handle "sub" correctly.
 define float* @sub(i64 %i, i64 %j) {
@@ -155,7 +151,7 @@ define float* @sub(i64 %i, i64 %j) {
 ; CHECK-LABEL: @sub(
 ; CHECK: %[[j2:[a-zA-Z0-9]+]] = sub i64 0, %j
 ; CHECK: [[BASE_PTR:%[a-zA-Z0-9]+]] = getelementptr [32 x [32 x float]], [32 x [32 x float]]* @float_2d_array, i64 0, i64 %i, i64 %[[j2]]
-; CHECK: getelementptr float, float* [[BASE_PTR]], i64 -155
+; CHECK: getelementptr inbounds float, float* [[BASE_PTR]], i64 -155
 
 %struct.Packed = type <{ [3 x i32], [8 x i64] }> ; <> means packed
 
@@ -173,7 +169,7 @@ entry:
 ; CHECK-LABEL: @packed_struct(
 ; CHECK: [[BASE_PTR:%[a-zA-Z0-9]+]] = getelementptr [1024 x %struct.Packed], [1024 x %struct.Packed]* %s, i64 0, i64 %{{[a-zA-Z0-9]+}}, i32 1, i64 %{{[a-zA-Z0-9]+}}
 ; CHECK: [[CASTED_PTR:%[a-zA-Z0-9]+]] = bitcast i64* [[BASE_PTR]] to i8*
-; CHECK: %uglygep = getelementptr i8, i8* [[CASTED_PTR]], i64 100
+; CHECK: %uglygep = getelementptr inbounds i8, i8* [[CASTED_PTR]], i64 100
 ; CHECK: bitcast i8* %uglygep to i64*
 
 ; We shouldn't be able to extract the 8 from "zext(a +nuw (b + 8))",
@@ -271,9 +267,34 @@ entry:
 ; CHECK-NOT: add
   %ptr2 = getelementptr inbounds %struct0, %struct0* %ptr, i64 0, i32 3, i64 %arrayidx, i32 1
 ; CHECK: [[PTR:%[a-zA-Z0-9]+]] = getelementptr %struct0, %struct0* %ptr, i64 0, i32 3, i64 %idx, i32 1
-; CHECK: [[PTR1:%[a-zA-Z0-9]+]] = bitcast %struct2* [[PTR]] to i8*
-; CHECK: getelementptr i8, i8* [[PTR1]], i64 -64
-; CHECK: bitcast
+; CHECK: getelementptr inbounds %struct2, %struct2* [[PTR]], i64 -3
+  ret %struct2* %ptr2
+; CHECK-NEXT: ret
+}
+
+; Check that we can see through explicit trunc() instruction.
+define %struct2* @trunk_explicit(%struct0* %ptr, i64 %idx) {
+; CHECK-LABEL: @trunk_explicit(
+entry:
+  %idx0 = trunc i64 1 to i32
+  %ptr2 = getelementptr inbounds %struct0, %struct0* %ptr, i32 %idx0, i32 3, i64 %idx, i32 1
+; CHECK-NOT: trunc
+; CHECK: [[PTR:%[a-zA-Z0-9]+]] = getelementptr %struct0, %struct0* %ptr, i64 0, i32 3, i64 %idx, i32 1
+; CHECK: getelementptr inbounds %struct2, %struct2* %0, i64 151
+  ret %struct2* %ptr2
+; CHECK-NEXT: ret
+}
+
+; Check that we can deal with trunc inserted by
+; canonicalizeArrayIndicesToPointerSize() if size of an index is larger than
+; that of the pointer.
+define %struct2* @trunk_long_idx(%struct0* %ptr, i64 %idx) {
+; CHECK-LABEL: @trunk_long_idx(
+entry:
+  %ptr2 = getelementptr inbounds %struct0, %struct0* %ptr, i65 1, i32 3, i64 %idx, i32 1
+; CHECK-NOT: trunc
+; CHECK: [[PTR:%[a-zA-Z0-9]+]] = getelementptr %struct0, %struct0* %ptr, i64 0, i32 3, i64 %idx, i32 1
+; CHECK: getelementptr inbounds %struct2, %struct2* %0, i64 151
   ret %struct2* %ptr2
 ; CHECK-NEXT: ret
 }

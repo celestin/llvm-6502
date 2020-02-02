@@ -1,9 +1,8 @@
 //===-- SystemZConstantPoolValue.cpp - SystemZ constant-pool value --------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -24,21 +23,6 @@ SystemZConstantPoolValue *
 SystemZConstantPoolValue::Create(const GlobalValue *GV,
                                  SystemZCP::SystemZCPModifier Modifier) {
   return new SystemZConstantPoolValue(GV, Modifier);
-}
-
-unsigned SystemZConstantPoolValue::getRelocationInfo() const {
-  switch (Modifier) {
-  case SystemZCP::TLSGD:
-  case SystemZCP::TLSLDM:
-  case SystemZCP::DTPOFF:
-    // May require a dynamic relocation.
-    return 2;
-  case SystemZCP::NTPOFF:
-    // May require a relocation, but the relocations are always resolved
-    // by the static linker.
-    return 1;
-  }
-  llvm_unreachable("Unknown modifier");
 }
 
 int SystemZConstantPoolValue::

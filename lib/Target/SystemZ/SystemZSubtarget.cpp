@@ -1,9 +1,8 @@
 //===-- SystemZSubtarget.cpp - SystemZ subtarget information --------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -18,6 +17,11 @@ using namespace llvm;
 #define GET_SUBTARGETINFO_TARGET_DESC
 #define GET_SUBTARGETINFO_CTOR
 #include "SystemZGenSubtargetInfo.inc"
+
+static cl::opt<bool> UseSubRegLiveness(
+    "systemz-subreg-liveness",
+    cl::desc("Enable subregister liveness tracking for SystemZ (experimental)"),
+    cl::Hidden);
 
 // Pin the vtable to this file.
 void SystemZSubtarget::anchor() {}
@@ -37,24 +41,32 @@ SystemZSubtarget::SystemZSubtarget(const Triple &TT, const std::string &CPU,
                                    const TargetMachine &TM)
     : SystemZGenSubtargetInfo(TT, CPU, FS), HasDistinctOps(false),
       HasLoadStoreOnCond(false), HasHighWord(false), HasFPExtension(false),
-      HasPopulationCount(false), HasFastSerialization(false),
-      HasInterlockedAccess1(false), HasMiscellaneousExtensions(false),
+      HasPopulationCount(false), HasMessageSecurityAssist3(false),
+      HasMessageSecurityAssist4(false), HasResetReferenceBitsMultiple(false),
+      HasFastSerialization(false), HasInterlockedAccess1(false),
+      HasMiscellaneousExtensions(false),
+      HasExecutionHint(false), HasLoadAndTrap(false),
       HasTransactionalExecution(false), HasProcessorAssist(false),
-      HasVector(false), TargetTriple(TT),
-      InstrInfo(initializeSubtargetDependencies(CPU, FS)), TLInfo(TM, *this),
-      TSInfo(), FrameLowering() {}
+      HasDFPZonedConversion(false), HasEnhancedDAT2(false),
+      HasVector(false), HasLoadStoreOnCond2(false),
+      HasLoadAndZeroRightmostByte(false), HasMessageSecurityAssist5(false),
+      HasDFPPackedConversion(false),
+      HasMiscellaneousExtensions2(false), HasGuardedStorage(false),
+      HasMessageSecurityAssist7(false), HasMessageSecurityAssist8(false),
+      HasVectorEnhancements1(false), HasVectorPackedDecimal(false),
+      HasInsertReferenceBitsMultiple(false),
+      HasMiscellaneousExtensions3(false), HasMessageSecurityAssist9(false),
+      HasVectorEnhancements2(false), HasVectorPackedDecimalEnhancement(false),
+      HasEnhancedSort(false), HasDeflateConversion(false),
+      TargetTriple(TT), InstrInfo(initializeSubtargetDependencies(CPU, FS)),
+      TLInfo(TM, *this), TSInfo(), FrameLowering() {}
 
-// Return true if GV binds locally under reloc model RM.
-static bool bindsLocally(const GlobalValue *GV, Reloc::Model RM) {
-  // For non-PIC, all symbols bind locally.
-  if (RM == Reloc::Static)
-    return true;
 
-  return GV->hasLocalLinkage() || !GV->hasDefaultVisibility();
+bool SystemZSubtarget::enableSubRegLiveness() const {
+  return UseSubRegLiveness;
 }
 
 bool SystemZSubtarget::isPC32DBLSymbol(const GlobalValue *GV,
-                                       Reloc::Model RM,
                                        CodeModel::Model CM) const {
   // PC32DBL accesses require the low bit to be clear.  Note that a zero
   // value selects the default alignment and is therefore OK.
@@ -63,7 +75,7 @@ bool SystemZSubtarget::isPC32DBLSymbol(const GlobalValue *GV,
 
   // For the small model, all locally-binding symbols are in range.
   if (CM == CodeModel::Small)
-    return bindsLocally(GV, RM);
+    return TLInfo.getTargetMachine().shouldAssumeDSOLocal(*GV->getParent(), GV);
 
   // For Medium and above, assume that the symbol is not within the 4GB range.
   // Taking the address of locally-defined text would be OK, but that

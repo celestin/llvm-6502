@@ -1,9 +1,8 @@
 //===- ArchiveWriter.h - ar archive file format writer ----------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -16,33 +15,33 @@
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Object/Archive.h"
+#include "llvm/Support/Error.h"
 #include "llvm/Support/FileSystem.h"
 
 namespace llvm {
 
-class NewArchiveIterator {
-  bool IsNewMember;
-  StringRef Name;
+struct NewArchiveMember {
+  std::unique_ptr<MemoryBuffer> Buf;
+  StringRef MemberName;
+  sys::TimePoint<std::chrono::seconds> ModTime;
+  unsigned UID = 0, GID = 0, Perms = 0644;
 
-  object::Archive::child_iterator OldI;
+  NewArchiveMember() = default;
+  NewArchiveMember(MemoryBufferRef BufRef);
 
-public:
-  NewArchiveIterator(object::Archive::child_iterator I, StringRef Name);
-  NewArchiveIterator(StringRef FileName);
-  bool isNewMember() const;
-  StringRef getName() const;
+  static Expected<NewArchiveMember>
+  getOldMember(const object::Archive::Child &OldMember, bool Deterministic);
 
-  object::Archive::child_iterator getOld() const;
-
-  StringRef getNew() const;
-  llvm::ErrorOr<int> getFD(sys::fs::file_status &NewStatus) const;
-  const sys::fs::file_status &getStatus() const;
+  static Expected<NewArchiveMember> getFile(StringRef FileName,
+                                            bool Deterministic);
 };
 
-std::pair<StringRef, std::error_code>
-writeArchive(StringRef ArcName, std::vector<NewArchiveIterator> &NewMembers,
-             bool WriteSymtab, object::Archive::Kind Kind, bool Deterministic,
-             bool Thin);
+Expected<std::string> computeArchiveRelativePath(StringRef From, StringRef To);
+
+Error writeArchive(StringRef ArcName, ArrayRef<NewArchiveMember> NewMembers,
+                   bool WriteSymtab, object::Archive::Kind Kind,
+                   bool Deterministic, bool Thin,
+                   std::unique_ptr<MemoryBuffer> OldArchiveBuf = nullptr);
 }
 
 #endif

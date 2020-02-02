@@ -1,7 +1,7 @@
 ; Verify that small structures and float arguments are passed in the
 ; least significant part of a stack slot doubleword.
 
-; RUN: llc < %s | FileCheck %s
+; RUN: llc -verify-machineinstrs < %s | FileCheck %s
 
 target datalayout = "e-m:e-i64:64-n32:64"
 target triple = "powerpc64le-unknown-linux-gnu"
@@ -42,8 +42,7 @@ entry:
   ret float %x
 }
 ; CHECK: @callee2
-; CHECK: addi [[TOCREG:[0-9]+]], 1, 136
-; CHECK: lxsspx {{[0-9]+}}, {{[0-9]+}}, [[TOCREG]]
+; CHECK: lfs {{[0-9]+}}, 136(1) 
 ; CHECK: blr
 
 define void @caller2() {
@@ -53,8 +52,7 @@ entry:
   ret void
 }
 ; CHECK: @caller2
-; CHECK: li [[TOCOFF:[0-9]+]], 136
-; CHECK: stxsspx {{[0-9]+}}, 1, [[TOCOFF]]
+; CHECK: std {{[0-9]+}}, 16({{[0-9]+}})
 ; CHECK: bl test2
 
 declare float @test2(float, float, float, float, float, float, float, float, float, float, float, float, float, float)

@@ -1,9 +1,8 @@
 //===-- ModuleDebugInfoPrinter.cpp - Prints module debug info metadata ----===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -15,10 +14,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/Analysis/Passes.h"
 #include "llvm/ADT/Statistic.h"
+#include "llvm/Analysis/Passes.h"
 #include "llvm/IR/DebugInfo.h"
-#include "llvm/IR/Function.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
@@ -74,7 +72,8 @@ void ModuleDebugInfoPrinter::print(raw_ostream &O, const Module *M) const {
   // filenames), so just print a few useful things.
   for (DICompileUnit *CU : Finder.compile_units()) {
     O << "Compile unit: ";
-    if (const char *Lang = dwarf::LanguageString(CU->getSourceLanguage()))
+    auto Lang = dwarf::LanguageString(CU->getSourceLanguage());
+    if (!Lang.empty())
       O << Lang;
     else
       O << "unknown-language(" << CU->getSourceLanguage() << ")";
@@ -90,7 +89,8 @@ void ModuleDebugInfoPrinter::print(raw_ostream &O, const Module *M) const {
     O << '\n';
   }
 
-  for (const DIGlobalVariable *GV : Finder.global_variables()) {
+  for (auto GVU : Finder.global_variables()) {
+    const auto *GV = GVU->getVariable();
     O << "Global variable: " << GV->getName();
     printFile(O, GV->getFilename(), GV->getDirectory(), GV->getLine());
     if (!GV->getLinkageName().empty())
@@ -105,14 +105,15 @@ void ModuleDebugInfoPrinter::print(raw_ostream &O, const Module *M) const {
     printFile(O, T->getFilename(), T->getDirectory(), T->getLine());
     if (auto *BT = dyn_cast<DIBasicType>(T)) {
       O << " ";
-      if (const char *Encoding =
-              dwarf::AttributeEncodingString(BT->getEncoding()))
+      auto Encoding = dwarf::AttributeEncodingString(BT->getEncoding());
+      if (!Encoding.empty())
         O << Encoding;
       else
         O << "unknown-encoding(" << BT->getEncoding() << ')';
     } else {
       O << ' ';
-      if (const char *Tag = dwarf::TagString(T->getTag()))
+      auto Tag = dwarf::TagString(T->getTag());
+      if (!Tag.empty())
         O << Tag;
       else
         O << "unknown-tag(" << T->getTag() << ")";

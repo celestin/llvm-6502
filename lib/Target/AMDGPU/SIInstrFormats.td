@@ -1,9 +1,8 @@
 //===-- SIInstrFormats.td - SI Instruction Encodings ----------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -11,68 +10,229 @@
 //
 //===----------------------------------------------------------------------===//
 
-class InstSI <dag outs, dag ins, string asm, list<dag> pattern> :
-    AMDGPUInst<outs, ins, asm, pattern>, PredicateControl {
+class InstSI <dag outs, dag ins, string asm = "",
+              list<dag> pattern = []> :
+  AMDGPUInst<outs, ins, asm, pattern>, GCNPredicateControl {
+  // Low bits - basic encoding information.
+  field bit SALU = 0;
+  field bit VALU = 0;
 
-  field bits<1> VM_CNT = 0;
-  field bits<1> EXP_CNT = 0;
-  field bits<1> LGKM_CNT = 0;
+  // SALU instruction formats.
+  field bit SOP1 = 0;
+  field bit SOP2 = 0;
+  field bit SOPC = 0;
+  field bit SOPK = 0;
+  field bit SOPP = 0;
 
-  field bits<1> SALU = 0;
-  field bits<1> VALU = 0;
+  // VALU instruction formats.
+  field bit VOP1 = 0;
+  field bit VOP2 = 0;
+  field bit VOPC = 0;
+  field bit VOP3 = 0;
+  field bit VOP3P = 0;
+  field bit VINTRP = 0;
+  field bit SDWA = 0;
+  field bit DPP = 0;
 
-  field bits<1> SOP1 = 0;
-  field bits<1> SOP2 = 0;
-  field bits<1> SOPC = 0;
-  field bits<1> SOPK = 0;
-  field bits<1> SOPP = 0;
+  // Memory instruction formats.
+  field bit MUBUF = 0;
+  field bit MTBUF = 0;
+  field bit SMRD = 0;
+  field bit MIMG = 0;
+  field bit EXP = 0;
+  field bit FLAT = 0;
+  field bit DS = 0;
 
-  field bits<1> VOP1 = 0;
-  field bits<1> VOP2 = 0;
-  field bits<1> VOP3 = 0;
-  field bits<1> VOPC = 0;
+  // Pseudo instruction formats.
+  field bit VGPRSpill = 0;
+  field bit SGPRSpill = 0;
 
-  field bits<1> MUBUF = 0;
-  field bits<1> MTBUF = 0;
-  field bits<1> SMRD = 0;
-  field bits<1> DS = 0;
-  field bits<1> MIMG = 0;
-  field bits<1> FLAT = 0;
-  field bits<1> WQM = 0;
-  field bits<1> VGPRSpill = 0;
+  // High bits - other information.
+  field bit VM_CNT = 0;
+  field bit EXP_CNT = 0;
+  field bit LGKM_CNT = 0;
+
+  // Whether WQM _must_ be enabled for this instruction.
+  field bit WQM = 0;
+
+  // Whether WQM _must_ be disabled for this instruction.
+  field bit DisableWQM = 0;
+
+  field bit Gather4 = 0;
+
+  // Most sopk treat the immediate as a signed 16-bit, however some
+  // use it as unsigned.
+  field bit SOPKZext = 0;
+
+  // This is an s_store_dword* instruction that requires a cache flush
+  // on wave termination. It is necessary to distinguish from mayStore
+  // SMEM instructions like the cache flush ones.
+  field bit ScalarStore = 0;
+
+  // Whether the operands can be ignored when computing the
+  // instruction size.
+  field bit FixedSize = 0;
+
+  // This bit tells the assembler to use the 32-bit encoding in case it
+  // is unable to infer the encoding from the operands.
+  field bit VOPAsmPrefer32Bit = 0;
+
+  // This bit indicates that this is a VOP3 opcode which supports op_sel
+  // modifier (gfx9 only).
+  field bit VOP3_OPSEL = 0;
+
+  // Is it possible for this instruction to be atomic?
+  field bit maybeAtomic = 0;
+
+  // This bit indicates that this is a VI instruction which is renamed
+  // in GFX9. Required for correct mapping from pseudo to MC.
+  field bit renamedInGFX9 = 0;
+
+  // This bit indicates that this has a floating point result type, so
+  // the clamp modifier has floating point semantics.
+  field bit FPClamp = 0;
+
+  // This bit indicates that instruction may support integer clamping
+  // which depends on GPU features.
+  field bit IntClamp = 0;
+
+  // This field indicates that the clamp applies to the low component
+  // of a packed output register.
+  field bit ClampLo = 0;
+
+  // This field indicates that the clamp applies to the high component
+  // of a packed output register.
+  field bit ClampHi = 0;
+
+  // This bit indicates that this is a packed VOP3P instruction
+  field bit IsPacked = 0;
+
+  // This bit indicates that this is a D16 buffer instruction.
+  field bit D16Buf = 0;
+
+  // This field indicates that FLAT instruction accesses FLAT_GLBL or
+  // FLAT_SCRATCH segment. Must be 0 for non-FLAT instructions.
+  field bit IsNonFlatSeg = 0;
+
+  // This bit indicates that this uses the floating point double precision
+  // rounding mode flags
+  field bit FPDPRounding = 0;
+
+  // Instruction is FP atomic.
+  field bit FPAtomic = 0;
+
+  // This bit indicates that this is one of MFMA instructions.
+  field bit IsMAI = 0;
+
+  // This bit indicates that this is one of DOT instructions.
+  field bit IsDOT = 0;
 
   // These need to be kept in sync with the enum in SIInstrFlags.
-  let TSFlags{0} = VM_CNT;
-  let TSFlags{1} = EXP_CNT;
-  let TSFlags{2} = LGKM_CNT;
+  let TSFlags{0} = SALU;
+  let TSFlags{1} = VALU;
 
-  let TSFlags{3} = SALU;
-  let TSFlags{4} = VALU;
+  let TSFlags{2} = SOP1;
+  let TSFlags{3} = SOP2;
+  let TSFlags{4} = SOPC;
+  let TSFlags{5} = SOPK;
+  let TSFlags{6} = SOPP;
 
-  let TSFlags{5} = SOP1;
-  let TSFlags{6} = SOP2;
-  let TSFlags{7} = SOPC;
-  let TSFlags{8} = SOPK;
-  let TSFlags{9} = SOPP;
+  let TSFlags{7} = VOP1;
+  let TSFlags{8} = VOP2;
+  let TSFlags{9} = VOPC;
+  let TSFlags{10} = VOP3;
+  let TSFlags{12} = VOP3P;
 
-  let TSFlags{10} = VOP1;
-  let TSFlags{11} = VOP2;
-  let TSFlags{12} = VOP3;
-  let TSFlags{13} = VOPC;
+  let TSFlags{13} = VINTRP;
+  let TSFlags{14} = SDWA;
+  let TSFlags{15} = DPP;
 
-  let TSFlags{14} = MUBUF;
-  let TSFlags{15} = MTBUF;
-  let TSFlags{16} = SMRD;
-  let TSFlags{17} = DS;
-  let TSFlags{18} = MIMG;
-  let TSFlags{19} = FLAT;
-  let TSFlags{20} = WQM;
-  let TSFlags{21} = VGPRSpill;
+  let TSFlags{16} = MUBUF;
+  let TSFlags{17} = MTBUF;
+  let TSFlags{18} = SMRD;
+  let TSFlags{19} = MIMG;
+  let TSFlags{20} = EXP;
+  let TSFlags{21} = FLAT;
+  let TSFlags{22} = DS;
 
-  // Most instructions require adjustments after selection to satisfy
-  // operand requirements.
-  let hasPostISelHook = 1;
+  let TSFlags{23} = VGPRSpill;
+  let TSFlags{24} = SGPRSpill;
+
+  let TSFlags{32} = VM_CNT;
+  let TSFlags{33} = EXP_CNT;
+  let TSFlags{34} = LGKM_CNT;
+
+  let TSFlags{35} = WQM;
+  let TSFlags{36} = DisableWQM;
+  let TSFlags{37} = Gather4;
+
+  let TSFlags{38} = SOPKZext;
+  let TSFlags{39} = ScalarStore;
+  let TSFlags{40} = FixedSize;
+  let TSFlags{41} = VOPAsmPrefer32Bit;
+  let TSFlags{42} = VOP3_OPSEL;
+
+  let TSFlags{43} = maybeAtomic;
+  let TSFlags{44} = renamedInGFX9;
+
+  let TSFlags{45} = FPClamp;
+  let TSFlags{46} = IntClamp;
+  let TSFlags{47} = ClampLo;
+  let TSFlags{48} = ClampHi;
+
+  let TSFlags{49} = IsPacked;
+
+  let TSFlags{50} = D16Buf;
+
+  let TSFlags{51} = IsNonFlatSeg;
+
+  let TSFlags{52} = FPDPRounding;
+
+  let TSFlags{53} = FPAtomic;
+
+  let TSFlags{54} = IsMAI;
+
+  let TSFlags{55} = IsDOT;
+
   let SchedRW = [Write32Bit];
+
+  field bits<1> DisableSIDecoder = 0;
+  field bits<1> DisableVIDecoder = 0;
+  field bits<1> DisableDecoder = 0;
+
+  let isAsmParserOnly = !if(!eq(DisableDecoder{0}, {0}), 0, 1);
+  let AsmVariantName = AMDGPUAsmVariants.Default;
+
+  // Avoid changing source registers in a way that violates constant bus read limitations.
+  let hasExtraSrcRegAllocReq = !if(VOP1,1,!if(VOP2,1,!if(VOP3,1,!if(VOPC,1,!if(SDWA,1, !if(VALU,1,0))))));
+}
+
+class PseudoInstSI<dag outs, dag ins, list<dag> pattern = [], string asm = "">
+  : InstSI<outs, ins, asm, pattern> {
+  let isPseudo = 1;
+  let isCodeGenOnly = 1;
+}
+
+class SPseudoInstSI<dag outs, dag ins, list<dag> pattern = [], string asm = "">
+  : PseudoInstSI<outs, ins, pattern, asm> {
+  let SALU = 1;
+}
+
+class VPseudoInstSI<dag outs, dag ins, list<dag> pattern = [], string asm = "">
+  : PseudoInstSI<outs, ins, pattern, asm> {
+  let VALU = 1;
+  let Uses = [EXEC];
+}
+
+class CFPseudoInstSI<dag outs, dag ins, list<dag> pattern = [],
+  bit UseExec = 0, bit DefExec = 0> :
+  SPseudoInstSI<outs, ins, pattern> {
+
+  let Uses = !if(UseExec, [EXEC], []);
+  let Defs = !if(DefExec, [EXEC, SCC], [SCC]);
+  let mayLoad = 0;
+  let mayStore = 0;
+  let hasSideEffects = 0;
 }
 
 class Enc32 {
@@ -86,319 +246,6 @@ class Enc64 {
 }
 
 class VOPDstOperand <RegisterClass rc> : RegisterOperand <rc, "printVOPDst">;
-def VOPDstVCC : VOPDstOperand <VCCReg>;
-
-let Uses = [EXEC] in {
-
-class VOPAnyCommon <dag outs, dag ins, string asm, list<dag> pattern> :
-    InstSI <outs, ins, asm, pattern> {
-
-  let mayLoad = 0;
-  let mayStore = 0;
-  let hasSideEffects = 0;
-  let UseNamedOperandTable = 1;
-  let VALU = 1;
-}
-
-class VOPCCommon <dag ins, string asm, list<dag> pattern> :
-    VOPAnyCommon <(outs VOPDstVCC:$dst), ins, asm, pattern> {
-
-  let DisableEncoding = "$dst";
-  let VOPC = 1;
-  let Size = 4;
-}
-
-class VOP1Common <dag outs, dag ins, string asm, list<dag> pattern> :
-    VOPAnyCommon <outs, ins, asm, pattern> {
-
-  let VOP1 = 1;
-  let Size = 4;
-}
-
-class VOP2Common <dag outs, dag ins, string asm, list<dag> pattern> :
-    VOPAnyCommon <outs, ins, asm, pattern> {
-
-  let VOP2 = 1;
-  let Size = 4;
-}
-
-class VOP3Common <dag outs, dag ins, string asm, list<dag> pattern> :
-    VOPAnyCommon <outs, ins, asm, pattern> {
-
-  // Using complex patterns gives VOP3 patterns a very high complexity rating,
-  // but standalone patterns are almost always prefered, so we need to adjust the
-  // priority lower.  The goal is to use a high number to reduce complexity to
-  // zero (or less than zero).
-  let AddedComplexity = -1000;
-
-  let VOP3 = 1;
-  let VALU = 1;
-
-  let AsmMatchConverter = "cvtVOP3";
-  let isCodeGenOnly = 0;
-
-  int Size = 8;
-}
-
-} // End Uses = [EXEC]
-
-//===----------------------------------------------------------------------===//
-// Scalar operations
-//===----------------------------------------------------------------------===//
-
-class SOP1e <bits<8> op> : Enc32 {
-  bits<7> sdst;
-  bits<8> ssrc0;
-
-  let Inst{7-0} = ssrc0;
-  let Inst{15-8} = op;
-  let Inst{22-16} = sdst;
-  let Inst{31-23} = 0x17d; //encoding;
-}
-
-class SOP2e <bits<7> op> : Enc32 {
-  bits<7> sdst;
-  bits<8> ssrc0;
-  bits<8> ssrc1;
-
-  let Inst{7-0} = ssrc0;
-  let Inst{15-8} = ssrc1;
-  let Inst{22-16} = sdst;
-  let Inst{29-23} = op;
-  let Inst{31-30} = 0x2; // encoding
-}
-
-class SOPCe <bits<7> op> : Enc32 {
-  bits<8> ssrc0;
-  bits<8> ssrc1;
-
-  let Inst{7-0} = ssrc0;
-  let Inst{15-8} = ssrc1;
-  let Inst{22-16} = op;
-  let Inst{31-23} = 0x17e;
-}
-
-class SOPKe <bits<5> op> : Enc32 {
-  bits <7> sdst;
-  bits <16> simm16;
-
-  let Inst{15-0} = simm16;
-  let Inst{22-16} = sdst;
-  let Inst{27-23} = op;
-  let Inst{31-28} = 0xb; //encoding
-}
-
-class SOPK64e <bits<5> op> : Enc64 {
-  bits <7> sdst = 0;
-  bits <16> simm16;
-  bits <32> imm;
-
-  let Inst{15-0} = simm16;
-  let Inst{22-16} = sdst;
-  let Inst{27-23} = op;
-  let Inst{31-28} = 0xb;
-
-  let Inst{63-32} = imm;
-}
-
-class SOPPe <bits<7> op> : Enc32 {
-  bits <16> simm16;
-
-  let Inst{15-0} = simm16;
-  let Inst{22-16} = op;
-  let Inst{31-23} = 0x17f; // encoding
-}
-
-class SMRDe <bits<5> op, bits<1> imm> : Enc32 {
-  bits<7> sdst;
-  bits<7> sbase;
-  bits<8> offset;
-
-  let Inst{7-0} = offset;
-  let Inst{8} = imm;
-  let Inst{14-9} = sbase{6-1};
-  let Inst{21-15} = sdst;
-  let Inst{26-22} = op;
-  let Inst{31-27} = 0x18; //encoding
-}
-
-let SchedRW = [WriteSALU] in {
-class SOP1 <dag outs, dag ins, string asm, list<dag> pattern> :
-    InstSI<outs, ins, asm, pattern> {
-  let mayLoad = 0;
-  let mayStore = 0;
-  let hasSideEffects = 0;
-  let isCodeGenOnly = 0;
-  let SALU = 1;
-  let SOP1 = 1;
-}
-
-class SOP2 <dag outs, dag ins, string asm, list<dag> pattern> :
-    InstSI <outs, ins, asm, pattern> {
-
-  let mayLoad = 0;
-  let mayStore = 0;
-  let hasSideEffects = 0;
-  let isCodeGenOnly = 0;
-  let SALU = 1;
-  let SOP2 = 1;
-
-  let UseNamedOperandTable = 1;
-}
-
-class SOPC <bits<7> op, dag outs, dag ins, string asm, list<dag> pattern> :
-  InstSI<outs, ins, asm, pattern>, SOPCe <op> {
-
-  let DisableEncoding = "$dst";
-  let mayLoad = 0;
-  let mayStore = 0;
-  let hasSideEffects = 0;
-  let SALU = 1;
-  let SOPC = 1;
-  let isCodeGenOnly = 0;
-
-  let UseNamedOperandTable = 1;
-}
-
-class SOPK <dag outs, dag ins, string asm, list<dag> pattern> :
-   InstSI <outs, ins , asm, pattern> {
-
-  let mayLoad = 0;
-  let mayStore = 0;
-  let hasSideEffects = 0;
-  let SALU = 1;
-  let SOPK = 1;
-
-  let UseNamedOperandTable = 1;
-}
-
-class SOPP <bits<7> op, dag ins, string asm, list<dag> pattern = []> :
-		InstSI <(outs), ins, asm, pattern >, SOPPe <op> {
-
-  let mayLoad = 0;
-  let mayStore = 0;
-  let hasSideEffects = 0;
-  let SALU = 1;
-  let SOPP = 1;
-
-  let UseNamedOperandTable = 1;
-}
-
-} // let SchedRW = [WriteSALU]
-
-class SMRD <dag outs, dag ins, string asm, list<dag> pattern> :
-    InstSI<outs, ins, asm, pattern> {
-
-  let LGKM_CNT = 1;
-  let SMRD = 1;
-  let mayStore = 0;
-  let mayLoad = 1;
-  let hasSideEffects = 0;
-  let UseNamedOperandTable = 1;
-  let SchedRW = [WriteSMEM];
-}
-
-//===----------------------------------------------------------------------===//
-// Vector ALU operations
-//===----------------------------------------------------------------------===//
-
-class VOP1e <bits<8> op> : Enc32 {
-  bits<8> vdst;
-  bits<9> src0;
-
-  let Inst{8-0} = src0;
-  let Inst{16-9} = op;
-  let Inst{24-17} = vdst;
-  let Inst{31-25} = 0x3f; //encoding
-}
-
-class VOP2e <bits<6> op> : Enc32 {
-  bits<8> vdst;
-  bits<9> src0;
-  bits<8> src1;
-
-  let Inst{8-0} = src0;
-  let Inst{16-9} = src1;
-  let Inst{24-17} = vdst;
-  let Inst{30-25} = op;
-  let Inst{31} = 0x0; //encoding
-}
-
-class VOP2_MADKe <bits<6> op> : Enc64 {
-
-  bits<8>  vdst;
-  bits<9>  src0;
-  bits<8>  vsrc1;
-  bits<32> src2;
-
-  let Inst{8-0} = src0;
-  let Inst{16-9} = vsrc1;
-  let Inst{24-17} = vdst;
-  let Inst{30-25} = op;
-  let Inst{31} = 0x0; // encoding
-  let Inst{63-32} = src2;
-}
-
-class VOP3e <bits<9> op> : Enc64 {
-  bits<8> vdst;
-  bits<2> src0_modifiers;
-  bits<9> src0;
-  bits<2> src1_modifiers;
-  bits<9> src1;
-  bits<2> src2_modifiers;
-  bits<9> src2;
-  bits<1> clamp;
-  bits<2> omod;
-
-  let Inst{7-0} = vdst;
-  let Inst{8} = src0_modifiers{1};
-  let Inst{9} = src1_modifiers{1};
-  let Inst{10} = src2_modifiers{1};
-  let Inst{11} = clamp;
-  let Inst{25-17} = op;
-  let Inst{31-26} = 0x34; //encoding
-  let Inst{40-32} = src0;
-  let Inst{49-41} = src1;
-  let Inst{58-50} = src2;
-  let Inst{60-59} = omod;
-  let Inst{61} = src0_modifiers{0};
-  let Inst{62} = src1_modifiers{0};
-  let Inst{63} = src2_modifiers{0};
-}
-
-class VOP3be <bits<9> op> : Enc64 {
-  bits<8> vdst;
-  bits<2> src0_modifiers;
-  bits<9> src0;
-  bits<2> src1_modifiers;
-  bits<9> src1;
-  bits<2> src2_modifiers;
-  bits<9> src2;
-  bits<7> sdst;
-  bits<2> omod;
-
-  let Inst{7-0} = vdst;
-  let Inst{14-8} = sdst;
-  let Inst{25-17} = op;
-  let Inst{31-26} = 0x34; //encoding
-  let Inst{40-32} = src0;
-  let Inst{49-41} = src1;
-  let Inst{58-50} = src2;
-  let Inst{60-59} = omod;
-  let Inst{61} = src0_modifiers{0};
-  let Inst{62} = src1_modifiers{0};
-  let Inst{63} = src2_modifiers{0};
-}
-
-class VOPCe <bits<8> op> : Enc32 {
-  bits<9> src0;
-  bits<8> vsrc1;
-
-  let Inst{8-0} = src0;
-  let Inst{16-9} = vsrc1;
-  let Inst{24-17} = op;
-  let Inst{31-25} = 0x3e;
-}
 
 class VINTRPe <bits<2> op> : Enc32 {
   bits<8> vdst;
@@ -414,136 +261,57 @@ class VINTRPe <bits<2> op> : Enc32 {
   let Inst{31-26} = 0x32; // encoding
 }
 
-class DSe <bits<8> op> : Enc64 {
-  bits<8> vdst;
-  bits<1> gds;
-  bits<8> addr;
-  bits<8> data0;
-  bits<8> data1;
-  bits<8> offset0;
-  bits<8> offset1;
-
-  let Inst{7-0} = offset0;
-  let Inst{15-8} = offset1;
-  let Inst{17} = gds;
-  let Inst{25-18} = op;
-  let Inst{31-26} = 0x36; //encoding
-  let Inst{39-32} = addr;
-  let Inst{47-40} = data0;
-  let Inst{55-48} = data1;
-  let Inst{63-56} = vdst;
-}
-
-class MUBUFe <bits<7> op> : Enc64 {
-  bits<12> offset;
-  bits<1> offen;
-  bits<1> idxen;
-  bits<1> glc;
-  bits<1> addr64;
-  bits<1> lds;
-  bits<8> vaddr;
-  bits<8> vdata;
-  bits<7> srsrc;
-  bits<1> slc;
-  bits<1> tfe;
-  bits<8> soffset;
-
-  let Inst{11-0} = offset;
-  let Inst{12} = offen;
-  let Inst{13} = idxen;
-  let Inst{14} = glc;
-  let Inst{15} = addr64;
-  let Inst{16} = lds;
-  let Inst{24-18} = op;
-  let Inst{31-26} = 0x38; //encoding
-  let Inst{39-32} = vaddr;
-  let Inst{47-40} = vdata;
-  let Inst{52-48} = srsrc{6-2};
-  let Inst{54} = slc;
-  let Inst{55} = tfe;
-  let Inst{63-56} = soffset;
-}
-
-class MTBUFe <bits<3> op> : Enc64 {
-  bits<8> vdata;
-  bits<12> offset;
-  bits<1> offen;
-  bits<1> idxen;
-  bits<1> glc;
-  bits<1> addr64;
-  bits<4> dfmt;
-  bits<3> nfmt;
-  bits<8> vaddr;
-  bits<7> srsrc;
-  bits<1> slc;
-  bits<1> tfe;
-  bits<8> soffset;
-
-  let Inst{11-0} = offset;
-  let Inst{12} = offen;
-  let Inst{13} = idxen;
-  let Inst{14} = glc;
-  let Inst{15} = addr64;
-  let Inst{18-16} = op;
-  let Inst{22-19} = dfmt;
-  let Inst{25-23} = nfmt;
-  let Inst{31-26} = 0x3a; //encoding
-  let Inst{39-32} = vaddr;
-  let Inst{47-40} = vdata;
-  let Inst{52-48} = srsrc{6-2};
-  let Inst{54} = slc;
-  let Inst{55} = tfe;
-  let Inst{63-56} = soffset;
-}
-
-class MIMGe <bits<7> op> : Enc64 {
+class MIMGe : Enc64 {
   bits<8> vdata;
   bits<4> dmask;
   bits<1> unorm;
   bits<1> glc;
-  bits<1> da;
   bits<1> r128;
   bits<1> tfe;
   bits<1> lwe;
   bits<1> slc;
-  bits<8> vaddr;
+  bit d16;
   bits<7> srsrc;
   bits<7> ssamp;
 
   let Inst{11-8} = dmask;
   let Inst{12} = unorm;
   let Inst{13} = glc;
-  let Inst{14} = da;
   let Inst{15} = r128;
   let Inst{16} = tfe;
   let Inst{17} = lwe;
-  let Inst{24-18} = op;
   let Inst{25} = slc;
   let Inst{31-26} = 0x3c;
-  let Inst{39-32} = vaddr;
   let Inst{47-40} = vdata;
   let Inst{52-48} = srsrc{6-2};
   let Inst{57-53} = ssamp{6-2};
+  let Inst{63} = d16;
 }
 
-class FLATe<bits<7> op> : Enc64 {
-  bits<8> addr;
-  bits<8> data;
-  bits<8> vdst;
-  bits<1> slc;
-  bits<1> glc;
-  bits<1> tfe;
+class MIMGe_gfx6789 <bits<8> op> : MIMGe {
+  bits<8> vaddr;
+  bits<1> da;
 
-  // 15-0 is reserved.
-  let Inst{16} = glc;
-  let Inst{17} = slc;
-  let Inst{24-18} = op;
-  let Inst{31-26} = 0x37; // Encoding.
-  let Inst{39-32} = addr;
-  let Inst{47-40} = data;
-  // 54-48 is reserved.
-  let Inst{55} = tfe;
-  let Inst{63-56} = vdst;
+  let Inst{0} = op{7};
+  let Inst{14} = da;
+  let Inst{24-18} = op{6-0};
+  let Inst{39-32} = vaddr;
+}
+
+class MIMGe_gfx10 <bits<8> op> : MIMGe {
+  bits<8> vaddr0;
+  bits<3> dim;
+  bits<2> nsa;
+  bits<1> dlc;
+  bits<1> a16 = 0; // TODO: this should be an operand
+
+  let Inst{0} = op{7};
+  let Inst{2-1} = nsa;
+  let Inst{5-3} = dim;
+  let Inst{7} = dlc;
+  let Inst{24-18} = op{6-0};
+  let Inst{39-32} = vaddr0;
+  let Inst{62} = a16;
 }
 
 class EXPe : Enc64 {
@@ -552,10 +320,10 @@ class EXPe : Enc64 {
   bits<1> compr;
   bits<1> done;
   bits<1> vm;
-  bits<8> vsrc0;
-  bits<8> vsrc1;
-  bits<8> vsrc2;
-  bits<8> vsrc3;
+  bits<8> src0;
+  bits<8> src1;
+  bits<8> src2;
+  bits<8> src3;
 
   let Inst{3-0} = en;
   let Inst{9-4} = tgt;
@@ -563,111 +331,43 @@ class EXPe : Enc64 {
   let Inst{11} = done;
   let Inst{12} = vm;
   let Inst{31-26} = 0x3e;
-  let Inst{39-32} = vsrc0;
-  let Inst{47-40} = vsrc1;
-  let Inst{55-48} = vsrc2;
-  let Inst{63-56} = vsrc3;
+  let Inst{39-32} = src0;
+  let Inst{47-40} = src1;
+  let Inst{55-48} = src2;
+  let Inst{63-56} = src3;
 }
 
 let Uses = [EXEC] in {
-
-class VOP1 <bits<8> op, dag outs, dag ins, string asm, list<dag> pattern> :
-    VOP1Common <outs, ins, asm, pattern>,
-    VOP1e<op> {
-  let isCodeGenOnly = 0;
-}
-
-class VOP2 <bits<6> op, dag outs, dag ins, string asm, list<dag> pattern> :
-    VOP2Common <outs, ins, asm, pattern>, VOP2e<op> {
-  let isCodeGenOnly = 0;
-}
-
-class VOPC <bits<8> op, dag ins, string asm, list<dag> pattern> :
-    VOPCCommon <ins, asm, pattern>, VOPCe <op>;
 
 class VINTRPCommon <dag outs, dag ins, string asm, list<dag> pattern> :
     InstSI <outs, ins, asm, pattern> {
-  let mayLoad = 1;
+  let VINTRP = 1;
+  // VINTRP instructions read parameter values from LDS, but these parameter
+  // values are stored outside of the LDS memory that is allocated to the
+  // shader for general purpose use.
+  //
+  // While it may be possible for ds_read/ds_write instructions to access
+  // the parameter values in LDS, this would essentially be an out-of-bounds
+  // memory access which we consider to be undefined behavior.
+  //
+  // So even though these instructions read memory, this memory is outside the
+  // addressable memory space for the shader, and we consider these instructions
+  // to be readnone.
+  let mayLoad = 0;
   let mayStore = 0;
   let hasSideEffects = 0;
+  let VALU = 1;
 }
 
-} // End Uses = [EXEC]
-
-//===----------------------------------------------------------------------===//
-// Vector I/O operations
-//===----------------------------------------------------------------------===//
-
-let Uses = [EXEC] in {
-
-class DS <dag outs, dag ins, string asm, list<dag> pattern> :
-    InstSI <outs, ins, asm, pattern> {
-
-  let LGKM_CNT = 1;
-  let DS = 1;
-  let UseNamedOperandTable = 1;
-  let Uses = [M0];
-
-  // Most instruction load and store data, so set this as the default.
-  let mayLoad = 1;
+class EXPCommon<dag outs, dag ins, string asm, list<dag> pattern> :
+  InstSI<outs, ins, asm, pattern> {
+  let EXP = 1;
+  let EXP_CNT = 1;
+  let mayLoad = 0; // Set to 1 if done bit is set.
   let mayStore = 1;
-
-  let hasSideEffects = 0;
-  let AsmMatchConverter = "cvtDS";
-  let SchedRW = [WriteLDS];
-}
-
-class MUBUF <dag outs, dag ins, string asm, list<dag> pattern> :
-    InstSI<outs, ins, asm, pattern> {
-
-  let VM_CNT = 1;
-  let EXP_CNT = 1;
-  let MUBUF = 1;
-
-  let hasSideEffects = 0;
   let UseNamedOperandTable = 1;
-  let AsmMatchConverter = "cvtMubuf";
-  let SchedRW = [WriteVMEM];
+  let Uses = [EXEC];
+  let SchedRW = [WriteExport];
 }
-
-class MTBUF <dag outs, dag ins, string asm, list<dag> pattern> :
-    InstSI<outs, ins, asm, pattern> {
-
-  let VM_CNT = 1;
-  let EXP_CNT = 1;
-  let MTBUF = 1;
-
-  let hasSideEffects = 0;
-  let UseNamedOperandTable = 1;
-  let SchedRW = [WriteVMEM];
-}
-
-class FLAT <bits<7> op, dag outs, dag ins, string asm, list<dag> pattern> :
-    InstSI<outs, ins, asm, pattern>, FLATe <op> {
-  let FLAT = 1;
-  // Internally, FLAT instruction are executed as both an LDS and a
-  // Buffer instruction; so, they increment both VM_CNT and LGKM_CNT
-  // and are not considered done until both have been decremented.
-  let VM_CNT = 1;
-  let LGKM_CNT = 1;
-
-  let Uses = [EXEC, FLAT_SCR]; // M0
-
-  let UseNamedOperandTable = 1;
-  let hasSideEffects = 0;
-  let AsmMatchConverter = "cvtFlat";
-  let SchedRW = [WriteVMEM];
-}
-
-class MIMG <bits<7> op, dag outs, dag ins, string asm, list<dag> pattern> :
-    InstSI <outs, ins, asm, pattern>, MIMGe <op> {
-
-  let VM_CNT = 1;
-  let EXP_CNT = 1;
-  let MIMG = 1;
-
-  let hasSideEffects = 0; // XXX ????
-}
-
 
 } // End Uses = [EXEC]

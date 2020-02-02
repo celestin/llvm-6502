@@ -1,9 +1,8 @@
 //===-- AMDGPUKernelCodeT.h - Print AMDGPU assembly code ---------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 /// \file AMDKernelCodeT.h
@@ -43,6 +42,15 @@ enum amd_code_version_t {
   AMD_CODE_VERSION_MAJOR = 0,
   AMD_CODE_VERSION_MINOR = 1
 };
+
+// Sets val bits for specified mask in specified dst packed instance.
+#define AMD_HSA_BITS_SET(dst, mask, val)                                       \
+  dst &= (~(1 << mask ## _SHIFT) & ~mask);                                     \
+  dst |= (((val) << mask ## _SHIFT) & mask)
+
+// Gets bits for specified mask from specified src packed instance.
+#define AMD_HSA_BITS_GET(src, mask)                                            \
+  ((src & mask) >> mask ## _SHIFT)                                             \
 
 /// The values used to define the number of bytes to use for the
 /// swizzle element size.
@@ -118,10 +126,18 @@ enum amd_code_property_mask_t {
   AMD_CODE_PROPERTY_ENABLE_SGPR_GRID_WORKGROUP_COUNT_Z_WIDTH = 1,
   AMD_CODE_PROPERTY_ENABLE_SGPR_GRID_WORKGROUP_COUNT_Z = ((1 << AMD_CODE_PROPERTY_ENABLE_SGPR_GRID_WORKGROUP_COUNT_Z_WIDTH) - 1) << AMD_CODE_PROPERTY_ENABLE_SGPR_GRID_WORKGROUP_COUNT_Z_SHIFT,
 
+  AMD_CODE_PROPERTY_ENABLE_WAVEFRONT_SIZE32_SHIFT = 10,
+  AMD_CODE_PROPERTY_ENABLE_WAVEFRONT_SIZE32_WIDTH = 1,
+  AMD_CODE_PROPERTY_ENABLE_WAVEFRONT_SIZE32 = ((1 << AMD_CODE_PROPERTY_ENABLE_WAVEFRONT_SIZE32_WIDTH) - 1) << AMD_CODE_PROPERTY_ENABLE_WAVEFRONT_SIZE32_SHIFT,
+
+  AMD_CODE_PROPERTY_RESERVED1_SHIFT = 11,
+  AMD_CODE_PROPERTY_RESERVED1_WIDTH = 5,
+  AMD_CODE_PROPERTY_RESERVED1 = ((1 << AMD_CODE_PROPERTY_RESERVED1_WIDTH) - 1) << AMD_CODE_PROPERTY_RESERVED1_SHIFT,
+
   /// Control wave ID base counter for GDS ordered-append. Used to set
   /// COMPUTE_DISPATCH_INITIATOR.ORDERED_APPEND_ENBL. (Not sure if
   /// ORDERED_APPEND_MODE also needs to be settable)
-  AMD_CODE_PROPERTY_ENABLE_ORDERED_APPEND_GDS_SHIFT = 10,
+  AMD_CODE_PROPERTY_ENABLE_ORDERED_APPEND_GDS_SHIFT = 16,
   AMD_CODE_PROPERTY_ENABLE_ORDERED_APPEND_GDS_WIDTH = 1,
   AMD_CODE_PROPERTY_ENABLE_ORDERED_APPEND_GDS = ((1 << AMD_CODE_PROPERTY_ENABLE_ORDERED_APPEND_GDS_WIDTH) - 1) << AMD_CODE_PROPERTY_ENABLE_ORDERED_APPEND_GDS_SHIFT,
 
@@ -146,7 +162,7 @@ enum amd_code_property_mask_t {
   /// is generally DWORD.
   ///
   /// uSE VALUES FROM THE AMD_ELEMENT_BYTE_SIZE_T ENUM.
-  AMD_CODE_PROPERTY_PRIVATE_ELEMENT_SIZE_SHIFT = 11,
+  AMD_CODE_PROPERTY_PRIVATE_ELEMENT_SIZE_SHIFT = 17,
   AMD_CODE_PROPERTY_PRIVATE_ELEMENT_SIZE_WIDTH = 2,
   AMD_CODE_PROPERTY_PRIVATE_ELEMENT_SIZE = ((1 << AMD_CODE_PROPERTY_PRIVATE_ELEMENT_SIZE_WIDTH) - 1) << AMD_CODE_PROPERTY_PRIVATE_ELEMENT_SIZE_SHIFT,
 
@@ -155,7 +171,7 @@ enum amd_code_property_mask_t {
   /// HSA_MACHINE_LARGE. Must also match
   /// SH_MEM_CONFIG.PTR32 (GFX6 (SI)/GFX7 (CI)),
   /// SH_MEM_CONFIG.ADDRESS_MODE (GFX8 (VI)+).
-  AMD_CODE_PROPERTY_IS_PTR64_SHIFT = 13,
+  AMD_CODE_PROPERTY_IS_PTR64_SHIFT = 19,
   AMD_CODE_PROPERTY_IS_PTR64_WIDTH = 1,
   AMD_CODE_PROPERTY_IS_PTR64 = ((1 << AMD_CODE_PROPERTY_IS_PTR64_WIDTH) - 1) << AMD_CODE_PROPERTY_IS_PTR64_SHIFT,
 
@@ -167,21 +183,25 @@ enum amd_code_property_mask_t {
   /// workitem_private_segment_byte_size only specifies the statically
   /// know private segment size, and additional space must be added
   /// for the call stack.
-  AMD_CODE_PROPERTY_IS_DYNAMIC_CALLSTACK_SHIFT = 14,
+  AMD_CODE_PROPERTY_IS_DYNAMIC_CALLSTACK_SHIFT = 20,
   AMD_CODE_PROPERTY_IS_DYNAMIC_CALLSTACK_WIDTH = 1,
   AMD_CODE_PROPERTY_IS_DYNAMIC_CALLSTACK = ((1 << AMD_CODE_PROPERTY_IS_DYNAMIC_CALLSTACK_WIDTH) - 1) << AMD_CODE_PROPERTY_IS_DYNAMIC_CALLSTACK_SHIFT,
 
   /// Indicate if code generated has support for debugging.
-  AMD_CODE_PROPERTY_IS_DEBUG_SUPPORTED_SHIFT = 15,
+  AMD_CODE_PROPERTY_IS_DEBUG_SUPPORTED_SHIFT = 21,
   AMD_CODE_PROPERTY_IS_DEBUG_SUPPORTED_WIDTH = 1,
   AMD_CODE_PROPERTY_IS_DEBUG_SUPPORTED = ((1 << AMD_CODE_PROPERTY_IS_DEBUG_SUPPORTED_WIDTH) - 1) << AMD_CODE_PROPERTY_IS_DEBUG_SUPPORTED_SHIFT,
 
-  AMD_CODE_PROPERTY_IS_XNACK_SUPPORTED_SHIFT = 15,
+  AMD_CODE_PROPERTY_IS_XNACK_SUPPORTED_SHIFT = 22,
   AMD_CODE_PROPERTY_IS_XNACK_SUPPORTED_WIDTH = 1,
-  AMD_CODE_PROPERTY_IS_XNACK_SUPPORTED = ((1 << AMD_CODE_PROPERTY_IS_XNACK_SUPPORTED_WIDTH) - 1) << AMD_CODE_PROPERTY_IS_XNACK_SUPPORTED_SHIFT
+  AMD_CODE_PROPERTY_IS_XNACK_SUPPORTED = ((1 << AMD_CODE_PROPERTY_IS_XNACK_SUPPORTED_WIDTH) - 1) << AMD_CODE_PROPERTY_IS_XNACK_SUPPORTED_SHIFT,
+
+  AMD_CODE_PROPERTY_RESERVED2_SHIFT = 23,
+  AMD_CODE_PROPERTY_RESERVED2_WIDTH = 9,
+  AMD_CODE_PROPERTY_RESERVED2 = ((1 << AMD_CODE_PROPERTY_RESERVED2_WIDTH) - 1) << AMD_CODE_PROPERTY_RESERVED2_SHIFT
 };
 
-/// @brief The hsa_ext_control_directives_t specifies the values for the HSAIL
+/// The hsa_ext_control_directives_t specifies the values for the HSAIL
 /// control directives. These control how the finalizer generates code. This
 /// struct is used both as an argument to hsaFinalizeKernel to specify values for
 /// the control directives, and is used in HsaKernelCode to record the values of
@@ -534,14 +554,8 @@ typedef struct amd_kernel_code_s {
   int64_t kernel_code_prefetch_byte_offset;
   uint64_t kernel_code_prefetch_byte_size;
 
-  /// Number of bytes of scratch backing memory required for full
-  /// occupancy of target chip. This takes into account the number of
-  /// bytes of scratch per work-item, the wavefront size, the maximum
-  /// number of wavefronts per CU, and the number of CUs. This is an
-  /// upper limit on scratch. If the grid being dispatched is small it
-  /// may only need less than this. If the kernel uses no scratch, or
-  /// the Finalizer has not computed this value, it must be 0.
-  uint64_t max_scratch_backing_memory_byte_size;
+  /// Reserved. Must be 0.
+  uint64_t reserved0;
 
   /// Shader program settings for CS. Contains COMPUTE_PGM_RSRC1 and
   /// COMPUTE_PGM_RSRC2 registers.

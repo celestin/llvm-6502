@@ -1,9 +1,8 @@
-//===- MCJITTest.cpp - Unit tests for the MCJIT ---------------------------===//
+//===- MCJITTest.cpp - Unit tests for the MCJIT -----------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -12,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm-c/Analysis.h"
 #include "MCJITTestAPICommon.h"
+#include "llvm-c/Analysis.h"
 #include "llvm-c/Core.h"
 #include "llvm-c/ExecutionEngine.h"
 #include "llvm-c/Target.h"
@@ -88,8 +87,10 @@ public:
 
   bool needsToReserveAllocationSpace() override { return true; }
 
-  void reserveAllocationSpace(uintptr_t CodeSize, uintptr_t DataSizeRO,
-                              uintptr_t DataSizeRW) override {
+  void reserveAllocationSpace(uintptr_t CodeSize, uint32_t CodeAlign,
+                              uintptr_t DataSizeRO, uint32_t RODataAlign,
+                              uintptr_t DataSizeRW,
+                              uint32_t RWDataAlign) override {
     ReservedCodeSize = CodeSize;
     ReservedDataSizeRO = DataSizeRO;
     ReservedDataSizeRW = DataSizeRW;
@@ -284,7 +285,6 @@ protected:
   
   void buildAndRunPasses() {
     LLVMPassManagerRef pass = LLVMCreatePassManager();
-    LLVMAddTargetData(LLVMGetExecutionEngineTargetData(Engine), pass);
     LLVMAddConstantPropagationPass(pass);
     LLVMAddInstructionCombiningPass(pass);
     LLVMRunPassManager(pass, Module);
@@ -302,8 +302,6 @@ protected:
       LLVMCreateFunctionPassManagerForModule(Module);
     LLVMPassManagerRef modulePasses =
       LLVMCreatePassManager();
-    
-    LLVMAddTargetData(LLVMGetExecutionEngineTargetData(Engine), modulePasses);
     
     LLVMPassManagerBuilderPopulateFunctionPassManager(passBuilder,
                                                       functionPasses);
@@ -339,14 +337,11 @@ TEST_F(MCJITCAPITest, simple_function) {
   buildMCJITOptions();
   buildMCJITEngine();
   buildAndRunPasses();
-  
-  union {
-    void *raw;
-    int (*usable)();
-  } functionPointer;
-  functionPointer.raw = LLVMGetPointerToGlobal(Engine, Function);
-  
-  EXPECT_EQ(42, functionPointer.usable());
+
+  auto *functionPointer = reinterpret_cast<int (*)()>(
+      reinterpret_cast<uintptr_t>(LLVMGetPointerToGlobal(Engine, Function)));
+
+  EXPECT_EQ(42, functionPointer());
 }
 
 TEST_F(MCJITCAPITest, gva) {
@@ -389,14 +384,11 @@ TEST_F(MCJITCAPITest, custom_memory_manager) {
   useRoundTripSectionMemoryManager();
   buildMCJITEngine();
   buildAndRunPasses();
-  
-  union {
-    void *raw;
-    int (*usable)();
-  } functionPointer;
-  functionPointer.raw = LLVMGetPointerToGlobal(Engine, Function);
-  
-  EXPECT_EQ(42, functionPointer.usable());
+
+  auto *functionPointer = reinterpret_cast<int (*)()>(
+      reinterpret_cast<uintptr_t>(LLVMGetPointerToGlobal(Engine, Function)));
+
+  EXPECT_EQ(42, functionPointer());
   EXPECT_TRUE(didCallAllocateCodeSection);
 }
 
@@ -412,14 +404,11 @@ TEST_F(MCJITCAPITest, stackmap_creates_compact_unwind_on_darwin) {
   useRoundTripSectionMemoryManager();
   buildMCJITEngine();
   buildAndRunOptPasses();
-  
-  union {
-    void *raw;
-    int (*usable)();
-  } functionPointer;
-  functionPointer.raw = LLVMGetPointerToGlobal(Engine, Function);
-  
-  EXPECT_EQ(42, functionPointer.usable());
+
+  auto *functionPointer = reinterpret_cast<int (*)()>(
+      reinterpret_cast<uintptr_t>(LLVMGetPointerToGlobal(Engine, Function)));
+
+  EXPECT_EQ(42, functionPointer());
   EXPECT_TRUE(didCallAllocateCodeSection);
   
   // Up to this point, the test is specific only to X86-64. But this next
@@ -446,21 +435,15 @@ TEST_F(MCJITCAPITest, reserve_allocation_space) {
   Options.MCJMM = wrap(MM);
   buildMCJITEngine();
   buildAndRunPasses();
-  
-  union {
-    void *raw;
-    int (*usable)();
-  } GetGlobalFct;
-  GetGlobalFct.raw = LLVMGetPointerToGlobal(Engine, Function);
-  
-  union {
-    void *raw;
-    void (*usable)(int);
-  } SetGlobalFct;
-  SetGlobalFct.raw = LLVMGetPointerToGlobal(Engine, Function2);
-  
-  SetGlobalFct.usable(789);
-  EXPECT_EQ(789, GetGlobalFct.usable());
+
+  auto GetGlobalFct = reinterpret_cast<int (*)()>(
+      reinterpret_cast<uintptr_t>(LLVMGetPointerToGlobal(Engine, Function)));
+
+  auto SetGlobalFct = reinterpret_cast<void (*)(int)>(
+      reinterpret_cast<uintptr_t>(LLVMGetPointerToGlobal(Engine, Function2)));
+
+  SetGlobalFct(789);
+  EXPECT_EQ(789, GetGlobalFct());
   EXPECT_LE(MM->UsedCodeSize, MM->ReservedCodeSize);
   EXPECT_LE(MM->UsedDataSizeRO, MM->ReservedDataSizeRO);
   EXPECT_LE(MM->UsedDataSizeRW, MM->ReservedDataSizeRW);
@@ -478,13 +461,10 @@ TEST_F(MCJITCAPITest, yield) {
   LLVMContextSetYieldCallback(C, yield, nullptr);
   buildAndRunPasses();
 
-  union {
-    void *raw;
-    int (*usable)();
-  } functionPointer;
-  functionPointer.raw = LLVMGetPointerToGlobal(Engine, Function);
+  auto *functionPointer = reinterpret_cast<int (*)()>(
+      reinterpret_cast<uintptr_t>(LLVMGetPointerToGlobal(Engine, Function)));
 
-  EXPECT_EQ(42, functionPointer.usable());
+  EXPECT_EQ(42, functionPointer());
   EXPECT_TRUE(didCallYield);
 }
 
@@ -497,14 +477,14 @@ TEST_F(MCJITCAPITest, addGlobalMapping) {
 
   Module = LLVMModuleCreateWithName("testModule");
   LLVMSetTarget(Module, HostTriple.c_str());
-  LLVMTypeRef FunctionType = LLVMFunctionType(LLVMInt32Type(), NULL, 0, 0);
+  LLVMTypeRef FunctionType = LLVMFunctionType(LLVMInt32Type(), nullptr, 0, 0);
   LLVMValueRef MappedFn = LLVMAddFunction(Module, "mapped_fn", FunctionType);
 
   Function = LLVMAddFunction(Module, "test_fn", FunctionType);
   LLVMBasicBlockRef Entry = LLVMAppendBasicBlock(Function, "");
   LLVMBuilderRef Builder = LLVMCreateBuilder();
   LLVMPositionBuilderAtEnd(Builder, Entry);
-  LLVMValueRef RetVal = LLVMBuildCall(Builder, MappedFn, NULL, 0, "");
+  LLVMValueRef RetVal = LLVMBuildCall(Builder, MappedFn, nullptr, 0, "");
   LLVMBuildRet(Builder, RetVal);
   LLVMDisposeBuilder(Builder);
 
@@ -514,7 +494,9 @@ TEST_F(MCJITCAPITest, addGlobalMapping) {
   buildMCJITOptions();
   buildMCJITEngine();
 
-  LLVMAddGlobalMapping(Engine, MappedFn, reinterpret_cast<void*>(&localTestFunc));
+  LLVMAddGlobalMapping(
+      Engine, MappedFn,
+      reinterpret_cast<void *>(reinterpret_cast<uintptr_t>(&localTestFunc)));
 
   buildAndRunPasses();
 

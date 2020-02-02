@@ -1,14 +1,14 @@
 //===- llvm/unittest/IR/ConstantsTest.cpp - Constants unit tests ----------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/AsmParser/Parser.h"
 #include "llvm/IR/Constants.h"
+#include "llvm-c/Core.h"
+#include "llvm/AsmParser/Parser.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instruction.h"
@@ -21,7 +21,8 @@ namespace llvm {
 namespace {
 
 TEST(ConstantsTest, Integer_i1) {
-  IntegerType* Int1 = IntegerType::get(getGlobalContext(), 1);
+  LLVMContext Context;
+  IntegerType *Int1 = IntegerType::get(Context, 1);
   Constant* One = ConstantInt::get(Int1, 1, true);
   Constant* Zero = ConstantInt::get(Int1, 0);
   Constant* NegOne = ConstantInt::get(Int1, static_cast<uint64_t>(-1), true);
@@ -102,7 +103,8 @@ TEST(ConstantsTest, Integer_i1) {
 }
 
 TEST(ConstantsTest, IntSigns) {
-  IntegerType* Int8Ty = Type::getInt8Ty(getGlobalContext());
+  LLVMContext Context;
+  IntegerType *Int8Ty = Type::getInt8Ty(Context);
   EXPECT_EQ(100, ConstantInt::get(Int8Ty, 100, false)->getSExtValue());
   EXPECT_EQ(100, ConstantInt::get(Int8Ty, 100, true)->getSExtValue());
   EXPECT_EQ(100, ConstantInt::getSigned(Int8Ty, 100)->getSExtValue());
@@ -115,16 +117,17 @@ TEST(ConstantsTest, IntSigns) {
 }
 
 TEST(ConstantsTest, FP128Test) {
-  Type *FP128Ty = Type::getFP128Ty(getGlobalContext());
+  LLVMContext Context;
+  Type *FP128Ty = Type::getFP128Ty(Context);
 
-  IntegerType *Int128Ty = Type::getIntNTy(getGlobalContext(), 128);
+  IntegerType *Int128Ty = Type::getIntNTy(Context, 128);
   Constant *Zero128 = Constant::getNullValue(Int128Ty);
   Constant *X = ConstantExpr::getUIToFP(Zero128, FP128Ty);
   EXPECT_TRUE(isa<ConstantFP>(X));
 }
 
 TEST(ConstantsTest, PointerCast) {
-  LLVMContext &C(getGlobalContext());
+  LLVMContext C;
   Type *Int8PtrTy = Type::getInt8PtrTy(C);
   Type *Int32PtrTy = Type::getInt32PtrTy(C);
   Type *Int64Ty = Type::getInt64Ty(C);
@@ -151,27 +154,50 @@ TEST(ConstantsTest, PointerCast) {
   EXPECT_EQ(Constant::getNullValue(Int32PtrVecTy),
             ConstantExpr::getPointerCast(
               Constant::getNullValue(Int8PtrVecTy), Int32PtrVecTy));
+
+  Type *Int32Ptr1Ty = Type::getInt32PtrTy(C, 1);
+  ConstantInt *K = ConstantInt::get(Type::getInt64Ty(C), 1234);
+
+  // Make sure that addrspacecast of inttoptr is not folded away.
+  EXPECT_NE(K,
+            ConstantExpr::getAddrSpaceCast(
+              ConstantExpr::getIntToPtr(K, Int32PtrTy), Int32Ptr1Ty));
+  EXPECT_NE(K,
+            ConstantExpr::getAddrSpaceCast(
+              ConstantExpr::getIntToPtr(K, Int32Ptr1Ty), Int32PtrTy));
+
+  Constant *NullInt32Ptr0 = Constant::getNullValue(Int32PtrTy);
+  Constant *NullInt32Ptr1 = Constant::getNullValue(Int32Ptr1Ty);
+
+  // Make sure that addrspacecast of null is not folded away.
+  EXPECT_NE(Constant::getNullValue(Int32PtrTy),
+            ConstantExpr::getAddrSpaceCast(NullInt32Ptr0, Int32Ptr1Ty));
+
+  EXPECT_NE(Constant::getNullValue(Int32Ptr1Ty),
+            ConstantExpr::getAddrSpaceCast(NullInt32Ptr1, Int32PtrTy));
 }
 
-#define CHECK(x, y) {                                         		\
-    std::string __s;                                            	\
-    raw_string_ostream __o(__s);                                	\
-    Instruction *__I = cast<ConstantExpr>(x)->getAsInstruction();	\
-    __I->print(__o);      						\
-    delete __I; 							\
-    __o.flush();                                                	\
-    EXPECT_EQ(std::string("  <badref> = " y), __s);             	\
+#define CHECK(x, y)                                                            \
+  {                                                                            \
+    std::string __s;                                                           \
+    raw_string_ostream __o(__s);                                               \
+    Instruction *__I = cast<ConstantExpr>(x)->getAsInstruction();              \
+    __I->print(__o);                                                           \
+    __I->deleteValue();                                                        \
+    __o.flush();                                                               \
+    EXPECT_EQ(std::string("  <badref> = " y), __s);                            \
   }
 
 TEST(ConstantsTest, AsInstructionsTest) {
-  std::unique_ptr<Module> M(new Module("MyModule", getGlobalContext()));
+  LLVMContext Context;
+  std::unique_ptr<Module> M(new Module("MyModule", Context));
 
-  Type *Int64Ty = Type::getInt64Ty(getGlobalContext());
-  Type *Int32Ty = Type::getInt32Ty(getGlobalContext());
-  Type *Int16Ty = Type::getInt16Ty(getGlobalContext());
-  Type *Int1Ty = Type::getInt1Ty(getGlobalContext());
-  Type *FloatTy = Type::getFloatTy(getGlobalContext());
-  Type *DoubleTy = Type::getDoubleTy(getGlobalContext());
+  Type *Int64Ty = Type::getInt64Ty(Context);
+  Type *Int32Ty = Type::getInt32Ty(Context);
+  Type *Int16Ty = Type::getInt16Ty(Context);
+  Type *Int1Ty = Type::getInt1Ty(Context);
+  Type *FloatTy = Type::getFloatTy(Context);
+  Type *DoubleTy = Type::getDoubleTy(Context);
 
   Constant *Global = M->getOrInsertGlobal("dummy",
                                          PointerType::getUnqual(Int32Ty));
@@ -188,8 +214,7 @@ TEST(ConstantsTest, AsInstructionsTest) {
 
   Constant *One = ConstantInt::get(Int32Ty, 1);
   Constant *Two = ConstantInt::get(Int64Ty, 2);
-  Constant *Big = ConstantInt::get(getGlobalContext(),
-                                   APInt{256, uint64_t(-1), true});
+  Constant *Big = ConstantInt::get(Context, APInt{256, uint64_t(-1), true});
   Constant *Elt = ConstantInt::get(Int16Ty, 2015);
   Constant *Undef16  = UndefValue::get(Int16Ty);
   Constant *Undef64  = UndefValue::get(Int64Ty);
@@ -204,7 +229,7 @@ TEST(ConstantsTest, AsInstructionsTest) {
   #define P6STR "bitcast (i32 ptrtoint (i32** @dummy2 to i32) to <2 x i16>)"
 
   CHECK(ConstantExpr::getNeg(P0), "sub i32 0, " P0STR);
-  CHECK(ConstantExpr::getFNeg(P1), "fsub float -0.000000e+00, " P1STR);
+  CHECK(ConstantExpr::getFNeg(P1), "fneg float " P1STR);
   CHECK(ConstantExpr::getNot(P0), "xor i32 " P0STR ", -1");
   CHECK(ConstantExpr::getAdd(P0, P0), "add i32 " P0STR ", " P0STR);
   CHECK(ConstantExpr::getAdd(P0, P0, false, true), "add nsw i32 " P0STR ", "
@@ -277,9 +302,10 @@ TEST(ConstantsTest, AsInstructionsTest) {
 #ifdef GTEST_HAS_DEATH_TEST
 #ifndef NDEBUG
 TEST(ConstantsTest, ReplaceWithConstantTest) {
-  std::unique_ptr<Module> M(new Module("MyModule", getGlobalContext()));
+  LLVMContext Context;
+  std::unique_ptr<Module> M(new Module("MyModule", Context));
 
-  Type *Int32Ty = Type::getInt32Ty(getGlobalContext());
+  Type *Int32Ty = Type::getInt32Ty(Context);
   Constant *One = ConstantInt::get(Int32Ty, 1);
 
   Constant *Global =
@@ -348,7 +374,7 @@ TEST(ConstantsTest, GEPReplaceWithConstant) {
   std::unique_ptr<Module> M(new Module("MyModule", Context));
 
   Type *IntTy = Type::getInt32Ty(Context);
-  auto *PtrTy = PointerType::get(IntTy, 0);
+  Type *PtrTy = PointerType::get(IntTy, 0);
   auto *C1 = ConstantInt::get(IntTy, 1);
   auto *Placeholder = new GlobalVariable(
       *M, IntTy, false, GlobalValue::ExternalWeakLinkage, nullptr);
@@ -361,7 +387,7 @@ TEST(ConstantsTest, GEPReplaceWithConstant) {
 
   auto *Global = new GlobalVariable(*M, PtrTy, false,
                                     GlobalValue::ExternalLinkage, nullptr);
-  auto *Alias = GlobalAlias::create(PtrTy, GlobalValue::ExternalLinkage,
+  auto *Alias = GlobalAlias::create(IntTy, 0, GlobalValue::ExternalLinkage,
                                     "alias", Global, M.get());
   Placeholder->replaceAllUsesWith(Alias);
   ASSERT_EQ(GEP, Ref->getInitializer());
@@ -380,6 +406,183 @@ TEST(ConstantsTest, AliasCAPI) {
   LLVMValueRef AliasRef =
       LLVMAddAlias(wrap(M.get()), wrap(I16PTy), wrap(Aliasee), "a");
   ASSERT_EQ(unwrap<GlobalAlias>(AliasRef)->getAliasee(), Aliasee);
+}
+
+static std::string getNameOfType(Type *T) {
+  std::string S;
+  raw_string_ostream RSOS(S);
+  T->print(RSOS);
+  return S;
+}
+
+TEST(ConstantsTest, BuildConstantDataArrays) {
+  LLVMContext Context;
+  std::unique_ptr<Module> M(new Module("MyModule", Context));
+
+  for (Type *T : {Type::getInt8Ty(Context), Type::getInt16Ty(Context),
+                  Type::getInt32Ty(Context), Type::getInt64Ty(Context)}) {
+    ArrayType *ArrayTy = ArrayType::get(T, 2);
+    Constant *Vals[] = {ConstantInt::get(T, 0), ConstantInt::get(T, 1)};
+    Constant *CDV = ConstantArray::get(ArrayTy, Vals);
+    ASSERT_TRUE(dyn_cast<ConstantDataArray>(CDV) != nullptr)
+        << " T = " << getNameOfType(T);
+  }
+
+  for (Type *T : {Type::getHalfTy(Context), Type::getFloatTy(Context),
+                  Type::getDoubleTy(Context)}) {
+    ArrayType *ArrayTy = ArrayType::get(T, 2);
+    Constant *Vals[] = {ConstantFP::get(T, 0), ConstantFP::get(T, 1)};
+    Constant *CDV = ConstantArray::get(ArrayTy, Vals);
+    ASSERT_TRUE(dyn_cast<ConstantDataArray>(CDV) != nullptr)
+        << " T = " << getNameOfType(T);
+  }
+}
+
+TEST(ConstantsTest, BuildConstantDataVectors) {
+  LLVMContext Context;
+  std::unique_ptr<Module> M(new Module("MyModule", Context));
+
+  for (Type *T : {Type::getInt8Ty(Context), Type::getInt16Ty(Context),
+                  Type::getInt32Ty(Context), Type::getInt64Ty(Context)}) {
+    Constant *Vals[] = {ConstantInt::get(T, 0), ConstantInt::get(T, 1)};
+    Constant *CDV = ConstantVector::get(Vals);
+    ASSERT_TRUE(dyn_cast<ConstantDataVector>(CDV) != nullptr)
+        << " T = " << getNameOfType(T);
+  }
+
+  for (Type *T : {Type::getHalfTy(Context), Type::getFloatTy(Context),
+                  Type::getDoubleTy(Context)}) {
+    Constant *Vals[] = {ConstantFP::get(T, 0), ConstantFP::get(T, 1)};
+    Constant *CDV = ConstantVector::get(Vals);
+    ASSERT_TRUE(dyn_cast<ConstantDataVector>(CDV) != nullptr)
+        << " T = " << getNameOfType(T);
+  }
+}
+
+TEST(ConstantsTest, BitcastToGEP) {
+  LLVMContext Context;
+  std::unique_ptr<Module> M(new Module("MyModule", Context));
+
+  auto *i32 = Type::getInt32Ty(Context);
+  auto *U = StructType::create(Context, "Unsized");
+  Type *EltTys[] = {i32, U};
+  auto *S = StructType::create(EltTys);
+
+  auto *G = new GlobalVariable(*M, S, false,
+                               GlobalValue::ExternalLinkage, nullptr);
+  auto *PtrTy = PointerType::get(i32, 0);
+  auto *C = ConstantExpr::getBitCast(G, PtrTy);
+  ASSERT_EQ(cast<ConstantExpr>(C)->getOpcode(), Instruction::BitCast);
+}
+
+bool foldFuncPtrAndConstToNull(LLVMContext &Context, Module *TheModule,
+                               uint64_t AndValue,
+                               MaybeAlign FunctionAlign = llvm::None) {
+  Type *VoidType(Type::getVoidTy(Context));
+  FunctionType *FuncType(FunctionType::get(VoidType, false));
+  Function *Func(Function::Create(
+      FuncType, GlobalValue::ExternalLinkage, "", TheModule));
+
+  if (FunctionAlign)
+    Func->setAlignment(*FunctionAlign);
+
+  IntegerType *ConstantIntType(Type::getInt32Ty(Context));
+  ConstantInt *TheConstant(ConstantInt::get(ConstantIntType, AndValue));
+
+  Constant *TheConstantExpr(
+      ConstantExpr::getPtrToInt(Func, ConstantIntType));
+
+
+  bool result = ConstantExpr::get(Instruction::And, TheConstantExpr,
+                           TheConstant)->isNullValue();
+
+  if (!TheModule) {
+    // If the Module exists then it will delete the Function.
+    delete Func;
+  }
+
+  return result;
+}
+
+TEST(ConstantsTest, FoldFunctionPtrAlignUnknownAnd2) {
+  LLVMContext Context;
+  Module TheModule("TestModule", Context);
+  // When the DataLayout doesn't specify a function pointer alignment we
+  // assume in this case that it is 4 byte aligned. This is a bug but we can't
+  // fix it directly because it causes a code size regression on X86.
+  // FIXME: This test should be changed once existing targets have
+  // appropriate defaults. See associated FIXME in ConstantFoldBinaryInstruction
+  ASSERT_TRUE(foldFuncPtrAndConstToNull(Context, &TheModule, 2));
+}
+
+TEST(ConstantsTest, DontFoldFunctionPtrAlignUnknownAnd4) {
+  LLVMContext Context;
+  Module TheModule("TestModule", Context);
+  ASSERT_FALSE(foldFuncPtrAndConstToNull(Context, &TheModule, 4));
+}
+
+TEST(ConstantsTest, FoldFunctionPtrAlign4) {
+  LLVMContext Context;
+  Module TheModule("TestModule", Context);
+  const char* AlignmentStrings[] = { "Fi32", "Fn32" };
+
+  for (unsigned AndValue = 1; AndValue <= 2; ++AndValue) {
+    for (const char *AlignmentString : AlignmentStrings) {
+      TheModule.setDataLayout(AlignmentString);
+      ASSERT_TRUE(foldFuncPtrAndConstToNull(Context, &TheModule, AndValue));
+    }
+  }
+}
+
+TEST(ConstantsTest, DontFoldFunctionPtrAlign1) {
+  LLVMContext Context;
+  Module TheModule("TestModule", Context);
+  const char* AlignmentStrings[] = { "Fi8", "Fn8" };
+
+  for (const char* AlignmentString : AlignmentStrings) {
+    TheModule.setDataLayout(AlignmentString);
+    ASSERT_FALSE(foldFuncPtrAndConstToNull(Context, &TheModule, 2));
+  }
+}
+
+TEST(ConstantsTest, FoldFunctionAlign4PtrAlignMultiple) {
+  LLVMContext Context;
+  Module TheModule("TestModule", Context);
+  TheModule.setDataLayout("Fn8");
+  ASSERT_TRUE(foldFuncPtrAndConstToNull(Context, &TheModule, 2, Align(4)));
+}
+
+TEST(ConstantsTest, DontFoldFunctionAlign4PtrAlignIndependent) {
+  LLVMContext Context;
+  Module TheModule("TestModule", Context);
+  TheModule.setDataLayout("Fi8");
+  ASSERT_FALSE(foldFuncPtrAndConstToNull(Context, &TheModule, 2, Align(4)));
+}
+
+TEST(ConstantsTest, DontFoldFunctionPtrIfNoModule) {
+  LLVMContext Context;
+  // Even though the function is explicitly 4 byte aligned, in the absence of a
+  // DataLayout we can't assume that the function pointer is aligned.
+  ASSERT_FALSE(foldFuncPtrAndConstToNull(Context, nullptr, 2, Align(4)));
+}
+
+TEST(ConstantsTest, FoldGlobalVariablePtr) {
+  LLVMContext Context;
+
+  IntegerType *IntType(Type::getInt32Ty(Context));
+
+  std::unique_ptr<GlobalVariable> Global(
+      new GlobalVariable(IntType, true, GlobalValue::ExternalLinkage));
+
+  Global->setAlignment(Align(4));
+
+  ConstantInt *TheConstant(ConstantInt::get(IntType, 2));
+
+  Constant *TheConstantExpr(
+      ConstantExpr::getPtrToInt(Global.get(), IntType));
+
+  ASSERT_TRUE(ConstantExpr::get( \
+      Instruction::And, TheConstantExpr, TheConstant)->isNullValue());
 }
 
 }  // end anonymous namespace

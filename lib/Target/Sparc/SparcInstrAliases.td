@@ -1,9 +1,8 @@
 //===-- SparcInstrAliases.td - Instruction Aliases for Sparc Target -------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -136,59 +135,68 @@ multiclass int_cond_alias<string cond, int condVal> {
                   (FMOVQ_XCC QFPRegs:$rd, QFPRegs:$rs2, condVal)>,
                   Requires<[Is64Bit, HasHardQuad]>;
 
+  // t<cond> %icc,  rs => t<cond> %icc, G0 + rs
+  def : InstAlias<!strconcat(!strconcat("t", cond), " %icc, $rs2"),
+                  (TICCrr G0, IntRegs:$rs2, condVal)>,
+                  Requires<[HasV9]>;
   // t<cond> %icc, rs1 + rs2
   def : InstAlias<!strconcat(!strconcat("t", cond), " %icc, $rs1 + $rs2"),
                   (TICCrr IntRegs:$rs1, IntRegs:$rs2, condVal)>,
                   Requires<[HasV9]>;
 
-  // t<cond> %icc,  rs => t<cond> %icc, G0 + rs
-  def : InstAlias<!strconcat(!strconcat("t", cond), " %icc, $rs2"),
-                  (TICCrr G0, IntRegs:$rs2, condVal)>,
-                  Requires<[HasV9]>;
-
-  // t<cond> %xcc, rs1 + rs2
-  def : InstAlias<!strconcat(!strconcat("t", cond), " %xcc, $rs1 + $rs2"),
-                  (TXCCrr IntRegs:$rs1, IntRegs:$rs2, condVal)>,
-                  Requires<[HasV9]>;
 
   // t<cond> %xcc, rs => t<cond> %xcc, G0 + rs
   def : InstAlias<!strconcat(!strconcat("t", cond), " %xcc, $rs2"),
                   (TXCCrr G0, IntRegs:$rs2, condVal)>,
                   Requires<[HasV9]>;
+  // t<cond> %xcc, rs1 + rs2
+  def : InstAlias<!strconcat(!strconcat("t", cond), " %xcc, $rs1 + $rs2"),
+                  (TXCCrr IntRegs:$rs1, IntRegs:$rs2, condVal)>,
+                  Requires<[HasV9]>;
 
-  // t<cond> rs1 + rs2 => t<cond> %icc, rs1 + rs2
-  def : InstAlias<!strconcat(!strconcat("t", cond), " $rs1 + $rs2"),
-                  (TICCrr IntRegs:$rs1, IntRegs:$rs2, condVal)>;
 
   // t<cond> rs=> t<cond> %icc,  G0 + rs2
-  def : InstAlias<!strconcat(!strconcat("t", cond), " $rs2"),
-                  (TICCrr G0, IntRegs:$rs2, condVal)>;
+  //def : InstAlias<!strconcat(!strconcat("t", cond), " $rs2"),
+  //                (TICCrr G0, IntRegs:$rs2, condVal)>,
+  //                Requires<[HasV9]>;
 
-  // t<cond> %icc, rs1 + imm
-  def : InstAlias<!strconcat(!strconcat("t", cond), " %icc, $rs1 + $imm"),
-                  (TICCri IntRegs:$rs1, i32imm:$imm, condVal)>,
-                  Requires<[HasV9]>;
+  // t<cond> rs1 + rs2 => t<cond> %icc, rs1 + rs2
+  //def : InstAlias<!strconcat(!strconcat("t", cond), " $rs1 + $rs2"),
+  //                (TICCrr IntRegs:$rs1, IntRegs:$rs2, condVal)>,
+  //                Requires<[HasV9]>;
+
   // t<cond> %icc, imm => t<cond> %icc, G0 + imm
   def : InstAlias<!strconcat(!strconcat("t", cond), " %icc, $imm"),
                   (TICCri G0, i32imm:$imm, condVal)>,
                   Requires<[HasV9]>;
-  // t<cond> %xcc, rs1 + imm
-  def : InstAlias<!strconcat(!strconcat("t", cond), " %xcc, $rs1 + $imm"),
-                  (TXCCri IntRegs:$rs1, i32imm:$imm, condVal)>,
+  // t<cond> %icc, rs1 + imm
+  def : InstAlias<!strconcat(!strconcat("t", cond), " %icc, $rs1 + $imm"),
+                  (TICCri IntRegs:$rs1, i32imm:$imm, condVal)>,
                   Requires<[HasV9]>;
   // t<cond> %xcc, imm => t<cond> %xcc, G0 + imm
   def : InstAlias<!strconcat(!strconcat("t", cond), " %xcc, $imm"),
                   (TXCCri G0, i32imm:$imm, condVal)>,
                   Requires<[HasV9]>;
+  // t<cond> %xcc, rs1 + imm
+  def : InstAlias<!strconcat(!strconcat("t", cond), " %xcc, $rs1 + $imm"),
+                  (TXCCri IntRegs:$rs1, i32imm:$imm, condVal)>,
+                  Requires<[HasV9]>;
 
-  // t<cond> rs1 + imm => t<cond> %icc, rs1 + imm
-  def : InstAlias<!strconcat(!strconcat("t", cond), " $rs1 + $imm"),
-                  (TICCri IntRegs:$rs1, i32imm:$imm, condVal)>;
-
-  // t<cond> imm => t<cond> %icc, G0 + imm
+  // t<cond> imm => t<cond> G0 + imm
   def : InstAlias<!strconcat(!strconcat("t", cond), " $imm"),
-                  (TICCri G0, i32imm:$imm, condVal)>;
+                  (TRAPri G0, i32imm:$imm, condVal)>;
 
+  // t<cond> rs1 + imm => t<cond> rs1 + imm
+  def : InstAlias<!strconcat(!strconcat("t", cond), " $rs1 + $imm"),
+                  (TRAPri IntRegs:$rs1, i32imm:$imm, condVal)>;
+
+  // t<cond> rs1 => t<cond> G0 + rs1
+  def : InstAlias<!strconcat(!strconcat("t", cond), " $rs1"),
+                  (TRAPrr G0, IntRegs:$rs1, condVal)>;
+
+  // t<cond> rs1 + rs2
+  def : InstAlias<!strconcat(!strconcat("t", cond), " $rs1 + $rs2"),
+                  (TRAPrr IntRegs:$rs1, IntRegs:$rs2, condVal)>;
 }
 
 
@@ -244,13 +252,23 @@ multiclass fp_cond_alias<string cond, int condVal> {
                   Requires<[HasV9, HasHardQuad]>;
 }
 
+
+// Instruction aliases for co-processor conditional branches.
+multiclass cp_cond_alias<string cond, int condVal> {
+
+  // cb<cond> $imm
+  def : InstAlias<!strconcat(!strconcat("cb", cond), " $imm"),
+                  (CBCOND brtarget:$imm, condVal), 0>;
+
+  // cb<cond>,a $imm
+  def : InstAlias<!strconcat(!strconcat("cb", cond), ",a $imm"),
+                  (CBCONDA brtarget:$imm, condVal), 0>;
+}
+
 defm : int_cond_alias<"a",    0b1000>;
-defm : int_cond_alias<"",     0b1000>; // same as a; gnu asm, not in manual
 defm : int_cond_alias<"n",    0b0000>;
 defm : int_cond_alias<"ne",   0b1001>;
-defm : int_cond_alias<"nz",   0b1001>; // same as ne
 defm : int_cond_alias<"e",    0b0001>;
-defm : int_cond_alias<"z",    0b0001>; // same as e
 defm : int_cond_alias<"g",    0b1010>;
 defm : int_cond_alias<"le",   0b0010>;
 defm : int_cond_alias<"ge",   0b1011>;
@@ -258,17 +276,22 @@ defm : int_cond_alias<"l",    0b0011>;
 defm : int_cond_alias<"gu",   0b1100>;
 defm : int_cond_alias<"leu",  0b0100>;
 defm : int_cond_alias<"cc",   0b1101>;
-defm : int_cond_alias<"geu",  0b1101>; // same as cc
 defm : int_cond_alias<"cs",   0b0101>;
-defm : int_cond_alias<"lu",   0b0101>; // same as cs
 defm : int_cond_alias<"pos",  0b1110>;
 defm : int_cond_alias<"neg",  0b0110>;
 defm : int_cond_alias<"vc",   0b1111>;
 defm : int_cond_alias<"vs",   0b0111>;
-
-defm : fp_cond_alias<"a",     0b0000>;
-defm : fp_cond_alias<"",      0b0000>; // same as a; gnu asm, not in manual
-defm : fp_cond_alias<"n",     0b1000>;
+let EmitPriority = 0 in 
+{
+  defm : int_cond_alias<"",     0b1000>; // same as a; gnu asm, not in manual
+  defm : int_cond_alias<"nz",   0b1001>; // same as ne
+  defm : int_cond_alias<"eq",   0b0001>; // same as e
+  defm : int_cond_alias<"z",    0b0001>; // same as e
+  defm : int_cond_alias<"geu",  0b1101>; // same as cc
+  defm : int_cond_alias<"lu",   0b0101>; // same as cs
+}
+defm : fp_cond_alias<"a",     0b1000>;
+defm : fp_cond_alias<"n",     0b0000>;
 defm : fp_cond_alias<"u",     0b0111>;
 defm : fp_cond_alias<"g",     0b0110>;
 defm : fp_cond_alias<"ug",    0b0101>;
@@ -276,15 +299,37 @@ defm : fp_cond_alias<"l",     0b0100>;
 defm : fp_cond_alias<"ul",    0b0011>;
 defm : fp_cond_alias<"lg",    0b0010>;
 defm : fp_cond_alias<"ne",    0b0001>;
-defm : fp_cond_alias<"nz",    0b0001>; // same as ne
 defm : fp_cond_alias<"e",     0b1001>;
-defm : fp_cond_alias<"z",     0b1001>; // same as e
 defm : fp_cond_alias<"ue",    0b1010>;
 defm : fp_cond_alias<"ge",    0b1011>;
 defm : fp_cond_alias<"uge",   0b1100>;
 defm : fp_cond_alias<"le",    0b1101>;
 defm : fp_cond_alias<"ule",   0b1110>;
 defm : fp_cond_alias<"o",     0b1111>;
+let EmitPriority = 0 in 
+{
+  defm : fp_cond_alias<"",      0b1000>; // same as a; gnu asm, not in manual
+  defm : fp_cond_alias<"nz",    0b0001>; // same as ne
+  defm : fp_cond_alias<"z",     0b1001>; // same as e
+}
+
+defm : cp_cond_alias<"a",     0b1000>;
+defm : cp_cond_alias<"n",     0b0000>;
+defm : cp_cond_alias<"3",     0b0111>;
+defm : cp_cond_alias<"2",     0b0110>;
+defm : cp_cond_alias<"23",    0b0101>;
+defm : cp_cond_alias<"1",     0b0100>;
+defm : cp_cond_alias<"13",    0b0011>;
+defm : cp_cond_alias<"12",    0b0010>;
+defm : cp_cond_alias<"123",   0b0001>;
+defm : cp_cond_alias<"0",     0b1001>;
+defm : cp_cond_alias<"03",    0b1010>;
+defm : cp_cond_alias<"02",    0b1011>;
+defm : cp_cond_alias<"023",   0b1100>;
+defm : cp_cond_alias<"01",    0b1101>;
+defm : cp_cond_alias<"013",   0b1110>;
+defm : cp_cond_alias<"012",   0b1111>;
+let EmitPriority = 0 in defm : cp_cond_alias<"",      0b1000>; // same as a; gnu asm, not in manual
 
 // Section A.3 Synthetic Instructions
 
@@ -424,10 +469,31 @@ def : InstAlias<"wr $simm13, %wim", (WRWIMri G0, i32imm:$simm13), 0>;
 def : InstAlias<"wr $rs2, %tbr", (WRTBRrr G0, IntRegs:$rs2), 0>;
 def : InstAlias<"wr $simm13, %tbr", (WRTBRri G0, i32imm:$simm13), 0>;
 
+def : InstAlias<"pwr $rs2, %psr", (PWRPSRrr G0, IntRegs:$rs2), 0>;
+def : InstAlias<"pwr $simm13, %psr", (PWRPSRri G0, i32imm:$simm13), 0>;
 
 // flush -> flush %g0
 def : InstAlias<"flush", (FLUSH), 0>;
 
+// unimp -> unimp 0
+def : InstAlias<"unimp", (UNIMP 0), 0>;
+
+def : MnemonicAlias<"iflush", "flush">;
+
+def : MnemonicAlias<"stub", "stb">;
+def : MnemonicAlias<"stsb", "stb">;
+
+def : MnemonicAlias<"stuba", "stba">;
+def : MnemonicAlias<"stsba", "stba">;
+
+def : MnemonicAlias<"stuh", "sth">;
+def : MnemonicAlias<"stsh", "sth">;
+
+def : MnemonicAlias<"stuha", "stha">;
+def : MnemonicAlias<"stsha", "stha">;
+
+def : MnemonicAlias<"lduw", "ld">, Requires<[HasV9]>;
+def : MnemonicAlias<"lduwa", "lda">, Requires<[HasV9]>;
 
 def : MnemonicAlias<"return", "rett">, Requires<[HasV9]>;
 
@@ -450,3 +516,8 @@ def : InstAlias<"fcmpeq $rs1, $rs2", (V9FCMPEQ FCC0, QFPRegs:$rs1,
                                                      QFPRegs:$rs2)>,
                 Requires<[HasHardQuad]>;
 
+// signx rd -> sra rd, %g0, rd
+def : InstAlias<"signx $rd", (SRArr IntRegs:$rd, IntRegs:$rd, G0), 0>, Requires<[HasV9]>;
+
+// signx reg, rd -> sra reg, %g0, rd
+def : InstAlias<"signx $rs1, $rd", (SRArr IntRegs:$rd, IntRegs:$rs1, G0), 0>, Requires<[HasV9]>;

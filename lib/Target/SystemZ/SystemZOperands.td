@@ -1,9 +1,8 @@
 //===-- SystemZOperands.td - SystemZ instruction operands ----*- tblgen-*--===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -22,15 +21,32 @@ class ImmediateTLSAsmOperand<string name>
   let RenderMethod = "addImmTLSOperands";
 }
 
+class ImmediateOp<ValueType vt, string asmop> : Operand<vt> {
+  let PrintMethod = "print"##asmop##"Operand";
+  let DecoderMethod = "decode"##asmop##"Operand";
+  let ParserMatchClass = !cast<AsmOperandClass>(asmop);
+}
+
+class ImmOpWithPattern<ValueType vt, string asmop, code pred, SDNodeXForm xform,
+      SDNode ImmNode = imm> :
+  ImmediateOp<vt, asmop>, PatLeaf<(vt ImmNode), pred, xform>;
+
+// class ImmediatePatLeaf<ValueType vt, code pred,
+//       SDNodeXForm xform, SDNode ImmNode>
+//   : PatLeaf<(vt ImmNode), pred, xform>;
+
+
 // Constructs both a DAG pattern and instruction operand for an immediate
 // of type VT.  PRED returns true if a node is acceptable and XFORM returns
 // the operand value associated with the node.  ASMOP is the name of the
 // associated asm operand, and also forms the basis of the asm print method.
-class Immediate<ValueType vt, code pred, SDNodeXForm xform, string asmop>
-  : PatLeaf<(vt imm), pred, xform>, Operand<vt> {
-  let PrintMethod = "print"##asmop##"Operand";
-  let DecoderMethod = "decode"##asmop##"Operand";
-  let ParserMatchClass = !cast<AsmOperandClass>(asmop);
+multiclass Immediate<ValueType vt, code pred, SDNodeXForm xform, string asmop> {
+  // def "" : ImmediateOp<vt, asmop>,
+  //          PatLeaf<(vt imm), pred, xform>;
+  def "" : ImmOpWithPattern<vt, asmop, pred, xform>;
+
+//  def _timm : PatLeaf<(vt timm), pred, xform>;
+  def _timm : ImmOpWithPattern<vt, asmop, pred, xform, timm>;
 }
 
 // Constructs an asm operand for a PC-relative address.  SIZE says how
@@ -115,13 +131,13 @@ class AddressingMode<string seltype, string bitsize, string dispsize,
 class BDMode<string type, string bitsize, string dispsize, string suffix>
   : AddressingMode<type, bitsize, dispsize, suffix, "", 2, "BDAddr",
                    (ops !cast<RegisterOperand>("ADDR"##bitsize),
-                        !cast<Immediate>("disp"##dispsize##"imm"##bitsize))>;
+                        !cast<Operand>("disp"##dispsize##"imm"##bitsize))>;
 
 // An addressing mode with a base, displacement and index.
 class BDXMode<string type, string bitsize, string dispsize, string suffix>
   : AddressingMode<type, bitsize, dispsize, suffix, "", 3, "BDXAddr",
                    (ops !cast<RegisterOperand>("ADDR"##bitsize),
-                        !cast<Immediate>("disp"##dispsize##"imm"##bitsize),
+                        !cast<Operand>("disp"##dispsize##"imm"##bitsize),
                         !cast<RegisterOperand>("ADDR"##bitsize))>;
 
 // A BDMode paired with an immediate length operand of LENSIZE bits.
@@ -130,14 +146,21 @@ class BDLMode<string type, string bitsize, string dispsize, string suffix,
   : AddressingMode<type, bitsize, dispsize, suffix, "Len"##lensize, 3,
                    "BDLAddr",
                    (ops !cast<RegisterOperand>("ADDR"##bitsize),
-                        !cast<Immediate>("disp"##dispsize##"imm"##bitsize),
-                        !cast<Immediate>("imm"##bitsize))>;
+                        !cast<Operand>("disp"##dispsize##"imm"##bitsize),
+                        !cast<Operand>("imm"##bitsize))>;
+
+// A BDMode paired with a register length operand.
+class BDRMode<string type, string bitsize, string dispsize, string suffix>
+  : AddressingMode<type, bitsize, dispsize, suffix, "", 3, "BDRAddr",
+                   (ops !cast<RegisterOperand>("ADDR"##bitsize),
+                        !cast<Operand>("disp"##dispsize##"imm"##bitsize),
+                        !cast<RegisterOperand>("GR"##bitsize))>;
 
 // An addressing mode with a base, displacement and a vector index.
 class BDVMode<string bitsize, string dispsize>
   : AddressOperand<bitsize, dispsize, "", "BDVAddr",
                    (ops !cast<RegisterOperand>("ADDR"##bitsize),
-                        !cast<Immediate>("disp"##dispsize##"imm"##bitsize),
+                        !cast<Operand>("disp"##dispsize##"imm"##bitsize),
                         !cast<RegisterOperand>("VR128"))>;
 
 //===----------------------------------------------------------------------===//
@@ -182,6 +205,17 @@ def HF32 : SDNodeXForm<imm, [{
   return CurDAG->getTargetConstant(Value, SDLoc(N), MVT::i64);
 }]>;
 
+// Negated variants.
+def NEGLH16 : SDNodeXForm<imm, [{
+  uint64_t Value = (-N->getZExtValue() & 0x00000000FFFF0000ULL) >> 16;
+  return CurDAG->getTargetConstant(Value, SDLoc(N), MVT::i64);
+}]>;
+
+def NEGLF32 : SDNodeXForm<imm, [{
+  uint64_t Value = -N->getZExtValue() & 0x00000000FFFFFFFFULL;
+  return CurDAG->getTargetConstant(Value, SDLoc(N), MVT::i64);
+}]>;
+
 // Truncate an immediate to a 8-bit signed quantity.
 def SIMM8 : SDNodeXForm<imm, [{
   return CurDAG->getTargetConstant(int8_t(N->getZExtValue()), SDLoc(N),
@@ -212,6 +246,12 @@ def SIMM16 : SDNodeXForm<imm, [{
                                    MVT::i64);
 }]>;
 
+// Negate and then truncate an immediate to a 16-bit signed quantity.
+def NEGSIMM16 : SDNodeXForm<imm, [{
+  return CurDAG->getTargetConstant(int16_t(-N->getZExtValue()), SDLoc(N),
+                                   MVT::i64);
+}]>;
+
 // Truncate an immediate to a 16-bit unsigned quantity.
 def UIMM16 : SDNodeXForm<imm, [{
   return CurDAG->getTargetConstant(uint16_t(N->getZExtValue()), SDLoc(N),
@@ -224,6 +264,12 @@ def SIMM32 : SDNodeXForm<imm, [{
                                    MVT::i64);
 }]>;
 
+// Negate and then truncate an immediate to a 32-bit unsigned quantity.
+def NEGSIMM32 : SDNodeXForm<imm, [{
+  return CurDAG->getTargetConstant(int32_t(-N->getZExtValue()), SDLoc(N),
+                                   MVT::i64);
+}]>;
+
 // Truncate an immediate to a 32-bit unsigned quantity.
 def UIMM32 : SDNodeXForm<imm, [{
   return CurDAG->getTargetConstant(uint32_t(N->getZExtValue()), SDLoc(N),
@@ -231,9 +277,15 @@ def UIMM32 : SDNodeXForm<imm, [{
 }]>;
 
 // Negate and then truncate an immediate to a 32-bit unsigned quantity.
-def NEGIMM32 : SDNodeXForm<imm, [{
+def NEGUIMM32 : SDNodeXForm<imm, [{
   return CurDAG->getTargetConstant(uint32_t(-N->getZExtValue()), SDLoc(N),
                                    MVT::i64);
+}]>;
+
+// Truncate an immediate to a 48-bit unsigned quantity.
+def UIMM48 : SDNodeXForm<imm, [{
+  return CurDAG->getTargetConstant(uint64_t(N->getZExtValue()) & 0xffffffffffff,
+                                   SDLoc(N), MVT::i64);
 }]>;
 
 //===----------------------------------------------------------------------===//
@@ -252,6 +304,7 @@ def S16Imm : ImmediateAsmOperand<"S16Imm">;
 def U16Imm : ImmediateAsmOperand<"U16Imm">;
 def S32Imm : ImmediateAsmOperand<"S32Imm">;
 def U32Imm : ImmediateAsmOperand<"U32Imm">;
+def U48Imm : ImmediateAsmOperand<"U48Imm">;
 
 //===----------------------------------------------------------------------===//
 // i32 immediates
@@ -259,80 +312,89 @@ def U32Imm : ImmediateAsmOperand<"U32Imm">;
 
 // Immediates for the lower and upper 16 bits of an i32, with the other
 // bits of the i32 being zero.
-def imm32ll16 : Immediate<i32, [{
+defm imm32ll16 : Immediate<i32, [{
   return SystemZ::isImmLL(N->getZExtValue());
 }], LL16, "U16Imm">;
 
-def imm32lh16 : Immediate<i32, [{
+defm imm32lh16 : Immediate<i32, [{
   return SystemZ::isImmLH(N->getZExtValue());
 }], LH16, "U16Imm">;
 
 // Immediates for the lower and upper 16 bits of an i32, with the other
 // bits of the i32 being one.
-def imm32ll16c : Immediate<i32, [{
+defm imm32ll16c : Immediate<i32, [{
   return SystemZ::isImmLL(uint32_t(~N->getZExtValue()));
 }], LL16, "U16Imm">;
 
-def imm32lh16c : Immediate<i32, [{
+defm imm32lh16c : Immediate<i32, [{
   return SystemZ::isImmLH(uint32_t(~N->getZExtValue()));
 }], LH16, "U16Imm">;
 
 // Short immediates
-def imm32zx1 : Immediate<i32, [{
+defm imm32zx1 : Immediate<i32, [{
   return isUInt<1>(N->getZExtValue());
 }], NOOP_SDNodeXForm, "U1Imm">;
 
-def imm32zx2 : Immediate<i32, [{
+defm imm32zx2 : Immediate<i32, [{
   return isUInt<2>(N->getZExtValue());
 }], NOOP_SDNodeXForm, "U2Imm">;
 
-def imm32zx3 : Immediate<i32, [{
+defm imm32zx3 : Immediate<i32, [{
   return isUInt<3>(N->getZExtValue());
 }], NOOP_SDNodeXForm, "U3Imm">;
 
-def imm32zx4 : Immediate<i32, [{
+defm imm32zx4 : Immediate<i32, [{
   return isUInt<4>(N->getZExtValue());
 }], NOOP_SDNodeXForm, "U4Imm">;
 
 // Note: this enforces an even value during code generation only.
 // When used from the assembler, any 4-bit value is allowed.
-def imm32zx4even : Immediate<i32, [{
+defm imm32zx4even : Immediate<i32, [{
   return isUInt<4>(N->getZExtValue());
 }], UIMM8EVEN, "U4Imm">;
 
-def imm32zx6 : Immediate<i32, [{
+defm imm32zx6 : Immediate<i32, [{
   return isUInt<6>(N->getZExtValue());
 }], NOOP_SDNodeXForm, "U6Imm">;
 
-def imm32sx8 : Immediate<i32, [{
+defm imm32sx8 : Immediate<i32, [{
   return isInt<8>(N->getSExtValue());
 }], SIMM8, "S8Imm">;
 
-def imm32zx8 : Immediate<i32, [{
+defm imm32zx8 : Immediate<i32, [{
   return isUInt<8>(N->getZExtValue());
 }], UIMM8, "U8Imm">;
 
-def imm32zx8trunc : Immediate<i32, [{}], UIMM8, "U8Imm">;
+defm imm32zx8trunc : Immediate<i32, [{}], UIMM8, "U8Imm">;
 
-def imm32zx12 : Immediate<i32, [{
+defm imm32zx12 : Immediate<i32, [{
   return isUInt<12>(N->getZExtValue());
 }], UIMM12, "U12Imm">;
 
-def imm32sx16 : Immediate<i32, [{
+defm imm32sx16 : Immediate<i32, [{
   return isInt<16>(N->getSExtValue());
 }], SIMM16, "S16Imm">;
 
-def imm32zx16 : Immediate<i32, [{
+defm imm32sx16n : Immediate<i32, [{
+  return isInt<16>(-N->getSExtValue());
+}], NEGSIMM16, "S16Imm">;
+
+defm imm32zx16 : Immediate<i32, [{
   return isUInt<16>(N->getZExtValue());
 }], UIMM16, "U16Imm">;
 
-def imm32sx16trunc : Immediate<i32, [{}], SIMM16, "S16Imm">;
+defm imm32sx16trunc : Immediate<i32, [{}], SIMM16, "S16Imm">;
+defm imm32zx16trunc : Immediate<i32, [{}], UIMM16, "U16Imm">;
 
 // Full 32-bit immediates.  we need both signed and unsigned versions
 // because the assembler is picky.  E.g. AFI requires signed operands
 // while NILF requires unsigned ones.
-def simm32 : Immediate<i32, [{}], SIMM32, "S32Imm">;
-def uimm32 : Immediate<i32, [{}], UIMM32, "U32Imm">;
+defm simm32 : Immediate<i32, [{}], SIMM32, "S32Imm">;
+defm uimm32 : Immediate<i32, [{}], UIMM32, "U32Imm">;
+
+defm simm32n : Immediate<i32, [{
+  return isInt<32>(-N->getSExtValue());
+}], NEGSIMM32, "S32Imm">;
 
 def imm32 : ImmLeaf<i32, [{}]>;
 
@@ -342,88 +404,109 @@ def imm32 : ImmLeaf<i32, [{}]>;
 
 // Immediates for 16-bit chunks of an i64, with the other bits of the
 // i32 being zero.
-def imm64ll16 : Immediate<i64, [{
+defm imm64ll16 : Immediate<i64, [{
   return SystemZ::isImmLL(N->getZExtValue());
 }], LL16, "U16Imm">;
 
-def imm64lh16 : Immediate<i64, [{
+defm imm64lh16 : Immediate<i64, [{
   return SystemZ::isImmLH(N->getZExtValue());
 }], LH16, "U16Imm">;
 
-def imm64hl16 : Immediate<i64, [{
+defm imm64hl16 : Immediate<i64, [{
   return SystemZ::isImmHL(N->getZExtValue());
 }], HL16, "U16Imm">;
 
-def imm64hh16 : Immediate<i64, [{
+defm imm64hh16 : Immediate<i64, [{
   return SystemZ::isImmHH(N->getZExtValue());
 }], HH16, "U16Imm">;
 
 // Immediates for 16-bit chunks of an i64, with the other bits of the
 // i32 being one.
-def imm64ll16c : Immediate<i64, [{
+defm imm64ll16c : Immediate<i64, [{
   return SystemZ::isImmLL(uint64_t(~N->getZExtValue()));
 }], LL16, "U16Imm">;
 
-def imm64lh16c : Immediate<i64, [{
+defm imm64lh16c : Immediate<i64, [{
   return SystemZ::isImmLH(uint64_t(~N->getZExtValue()));
 }], LH16, "U16Imm">;
 
-def imm64hl16c : Immediate<i64, [{
+defm imm64hl16c : Immediate<i64, [{
   return SystemZ::isImmHL(uint64_t(~N->getZExtValue()));
 }], HL16, "U16Imm">;
 
-def imm64hh16c : Immediate<i64, [{
+defm imm64hh16c : Immediate<i64, [{
   return SystemZ::isImmHH(uint64_t(~N->getZExtValue()));
 }], HH16, "U16Imm">;
 
 // Immediates for the lower and upper 32 bits of an i64, with the other
 // bits of the i32 being zero.
-def imm64lf32 : Immediate<i64, [{
+defm imm64lf32 : Immediate<i64, [{
   return SystemZ::isImmLF(N->getZExtValue());
 }], LF32, "U32Imm">;
 
-def imm64hf32 : Immediate<i64, [{
+defm imm64hf32 : Immediate<i64, [{
   return SystemZ::isImmHF(N->getZExtValue());
 }], HF32, "U32Imm">;
 
 // Immediates for the lower and upper 32 bits of an i64, with the other
 // bits of the i32 being one.
-def imm64lf32c : Immediate<i64, [{
+defm imm64lf32c : Immediate<i64, [{
   return SystemZ::isImmLF(uint64_t(~N->getZExtValue()));
 }], LF32, "U32Imm">;
 
-def imm64hf32c : Immediate<i64, [{
+defm imm64hf32c : Immediate<i64, [{
   return SystemZ::isImmHF(uint64_t(~N->getZExtValue()));
 }], HF32, "U32Imm">;
 
+// Negated immediates that fit LF32 or LH16.
+defm imm64lh16n : Immediate<i64, [{
+  return SystemZ::isImmLH(uint64_t(-N->getZExtValue()));
+}], NEGLH16, "U16Imm">;
+
+defm imm64lf32n : Immediate<i64, [{
+  return SystemZ::isImmLF(uint64_t(-N->getZExtValue()));
+}], NEGLF32, "U32Imm">;
+
 // Short immediates.
-def imm64sx8 : Immediate<i64, [{
+defm imm64sx8 : Immediate<i64, [{
   return isInt<8>(N->getSExtValue());
 }], SIMM8, "S8Imm">;
 
-def imm64zx8 : Immediate<i64, [{
+defm imm64zx8 : Immediate<i64, [{
   return isUInt<8>(N->getSExtValue());
 }], UIMM8, "U8Imm">;
 
-def imm64sx16 : Immediate<i64, [{
+defm imm64sx16 : Immediate<i64, [{
   return isInt<16>(N->getSExtValue());
 }], SIMM16, "S16Imm">;
 
-def imm64zx16 : Immediate<i64, [{
+defm imm64sx16n : Immediate<i64, [{
+  return isInt<16>(-N->getSExtValue());
+}], NEGSIMM16, "S16Imm">;
+
+defm imm64zx16 : Immediate<i64, [{
   return isUInt<16>(N->getZExtValue());
 }], UIMM16, "U16Imm">;
 
-def imm64sx32 : Immediate<i64, [{
+defm imm64sx32 : Immediate<i64, [{
   return isInt<32>(N->getSExtValue());
 }], SIMM32, "S32Imm">;
 
-def imm64zx32 : Immediate<i64, [{
+defm imm64sx32n : Immediate<i64, [{
+  return isInt<32>(-N->getSExtValue());
+}], NEGSIMM32, "S32Imm">;
+
+defm imm64zx32 : Immediate<i64, [{
   return isUInt<32>(N->getZExtValue());
 }], UIMM32, "U32Imm">;
 
-def imm64zx32n : Immediate<i64, [{
+defm imm64zx32n : Immediate<i64, [{
   return isUInt<32>(-N->getSExtValue());
-}], NEGIMM32, "U32Imm">;
+}], NEGUIMM32, "U32Imm">;
+
+defm imm64zx48 : Immediate<i64, [{
+  return isUInt<64>(N->getZExtValue());
+}], UIMM48, "U48Imm">;
 
 def imm64 : ImmLeaf<i64, [{}]>, Operand<i64>;
 
@@ -442,7 +525,9 @@ def fpimmneg0 : PatLeaf<(fpimm), [{ return N->isExactlyValue(-0.0); }]>;
 //===----------------------------------------------------------------------===//
 
 // PC-relative asm operands.
+def PCRel12 : PCRelAsmOperand<"12">;
 def PCRel16 : PCRelAsmOperand<"16">;
+def PCRel24 : PCRelAsmOperand<"24">;
 def PCRel32 : PCRelAsmOperand<"32">;
 def PCRelTLS16 : PCRelTLSAsmOperand<"16">;
 def PCRelTLS32 : PCRelTLSAsmOperand<"32">;
@@ -451,11 +536,25 @@ def PCRelTLS32 : PCRelTLSAsmOperand<"32">;
 // and multiplied by 2.
 def brtarget16 : PCRelOperand<OtherVT, PCRel16> {
   let EncoderMethod = "getPC16DBLEncoding";
-  let DecoderMethod = "decodePC16DBLOperand";
+  let DecoderMethod = "decodePC16DBLBranchOperand";
 }
 def brtarget32 : PCRelOperand<OtherVT, PCRel32> {
   let EncoderMethod = "getPC32DBLEncoding";
-  let DecoderMethod = "decodePC32DBLOperand";
+  let DecoderMethod = "decodePC32DBLBranchOperand";
+}
+
+// Variants of brtarget for use with branch prediction preload.
+def brtarget12bpp : PCRelOperand<OtherVT, PCRel12> {
+  let EncoderMethod = "getPC12DBLBPPEncoding";
+  let DecoderMethod = "decodePC12DBLBranchOperand";
+}
+def brtarget16bpp : PCRelOperand<OtherVT, PCRel16> {
+  let EncoderMethod = "getPC16DBLBPPEncoding";
+  let DecoderMethod = "decodePC16DBLBranchOperand";
+}
+def brtarget24bpp : PCRelOperand<OtherVT, PCRel24> {
+  let EncoderMethod = "getPC24DBLBPPEncoding";
+  let DecoderMethod = "decodePC24DBLBranchOperand";
 }
 
 // Variants of brtarget16/32 with an optional additional TLS symbol.
@@ -464,12 +563,12 @@ def tlssym : Operand<i64> { }
 def brtarget16tls : PCRelTLSOperand<OtherVT, PCRelTLS16> {
   let MIOperandInfo = (ops brtarget16:$func, tlssym:$sym);
   let EncoderMethod = "getPC16DBLTLSEncoding";
-  let DecoderMethod = "decodePC16DBLOperand";
+  let DecoderMethod = "decodePC16DBLBranchOperand";
 }
 def brtarget32tls : PCRelTLSOperand<OtherVT, PCRelTLS32> {
   let MIOperandInfo = (ops brtarget32:$func, tlssym:$sym);
   let EncoderMethod = "getPC32DBLTLSEncoding";
-  let DecoderMethod = "decodePC32DBLOperand";
+  let DecoderMethod = "decodePC32DBLBranchOperand";
 }
 
 // A PC-relative offset of a global value.  The offset is sign-extended
@@ -497,7 +596,9 @@ def BDAddr64Disp12      : AddressAsmOperand<"BDAddr",   "64", "12">;
 def BDAddr64Disp20      : AddressAsmOperand<"BDAddr",   "64", "20">;
 def BDXAddr64Disp12     : AddressAsmOperand<"BDXAddr",  "64", "12">;
 def BDXAddr64Disp20     : AddressAsmOperand<"BDXAddr",  "64", "20">;
+def BDLAddr64Disp12Len4 : AddressAsmOperand<"BDLAddr",  "64", "12", "Len4">;
 def BDLAddr64Disp12Len8 : AddressAsmOperand<"BDLAddr",  "64", "12", "Len8">;
+def BDRAddr64Disp12     : AddressAsmOperand<"BDRAddr",  "64", "12">;
 def BDVAddr64Disp12     : AddressAsmOperand<"BDVAddr",  "64", "12">;
 
 // DAG patterns and operands for addressing modes.  Each mode has
@@ -543,26 +644,17 @@ def bdxaddr20pair     : BDXMode<"BDXAddr",  "64", "20", "Pair">;
 def dynalloc12only    : BDXMode<"DynAlloc", "64", "12", "Only">;
 def laaddr12pair      : BDXMode<"LAAddr",   "64", "12", "Pair">;
 def laaddr20pair      : BDXMode<"LAAddr",   "64", "20", "Pair">;
+def bdladdr12onlylen4 : BDLMode<"BDLAddr",  "64", "12", "Only", "4">;
 def bdladdr12onlylen8 : BDLMode<"BDLAddr",  "64", "12", "Only", "8">;
+def bdraddr12only     : BDRMode<"BDRAddr",  "64", "12", "Only">;
 def bdvaddr12only     : BDVMode<            "64", "12">;
 
 //===----------------------------------------------------------------------===//
 // Miscellaneous
 //===----------------------------------------------------------------------===//
 
-// Access registers.  At present we just use them for accessing the thread
-// pointer, so we don't expose them as register to LLVM.
-def AccessReg : AsmOperandClass {
-  let Name = "AccessReg";
-  let ParserMethod = "parseAccessReg";
-}
-def access_reg : Immediate<i32, [{ return N->getZExtValue() < 16; }],
-                           NOOP_SDNodeXForm, "AccessReg"> {
-  let ParserMatchClass = AccessReg;
-}
-
 // A 4-bit condition-code mask.
-def cond4 : PatLeaf<(i32 imm), [{ return (N->getZExtValue() < 16); }]>,
+def cond4 : PatLeaf<(i32 timm), [{ return (N->getZExtValue() < 16); }]>,
             Operand<i32> {
   let PrintMethod = "printCond4Operand";
 }

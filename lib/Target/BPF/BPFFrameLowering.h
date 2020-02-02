@@ -1,9 +1,8 @@
 //===-- BPFFrameLowering.h - Define frame lowering for BPF -----*- C++ -*--===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -14,7 +13,7 @@
 #ifndef LLVM_LIB_TARGET_BPF_BPFFRAMELOWERING_H
 #define LLVM_LIB_TARGET_BPF_BPFFRAMELOWERING_H
 
-#include "llvm/Target/TargetFrameLowering.h"
+#include "llvm/CodeGen/TargetFrameLowering.h"
 
 namespace llvm {
 class BPFSubtarget;
@@ -22,7 +21,7 @@ class BPFSubtarget;
 class BPFFrameLowering : public TargetFrameLowering {
 public:
   explicit BPFFrameLowering(const BPFSubtarget &sti)
-      : TargetFrameLowering(TargetFrameLowering::StackGrowsDown, 8, 0) {}
+      : TargetFrameLowering(TargetFrameLowering::StackGrowsDown, Align(8), 0) {}
 
   void emitPrologue(MachineFunction &MF, MachineBasicBlock &MBB) const override;
   void emitEpilogue(MachineFunction &MF, MachineBasicBlock &MBB) const override;
@@ -31,10 +30,10 @@ public:
   void determineCalleeSaves(MachineFunction &MF, BitVector &SavedRegs,
                             RegScavenger *RS) const override;
 
-  void
+  MachineBasicBlock::iterator
   eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
                                 MachineBasicBlock::iterator MI) const override {
-    MBB.erase(MI);
+    return MBB.erase(MI);
   }
 };
 }

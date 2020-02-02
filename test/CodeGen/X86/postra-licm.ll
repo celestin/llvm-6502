@@ -1,5 +1,5 @@
-; RUN: llc < %s -mtriple=i386-apple-darwin -relocation-model=pic -disable-fp-elim | FileCheck %s -check-prefix=X86-32
-; RUN: llc < %s -mtriple=x86_64-apple-darwin -relocation-model=pic -disable-fp-elim | FileCheck %s -check-prefix=X86-64
+; RUN: llc < %s -mtriple=i386-apple-darwin -relocation-model=pic -frame-pointer=all | FileCheck %s -check-prefix=X86-32
+; RUN: llc < %s -mtriple=x86_64-apple-darwin -relocation-model=pic -frame-pointer=all | FileCheck %s -check-prefix=X86-64
 
 ; MachineLICM should be able to hoist loop invariant reload out of the loop.
 ; Only linear scan needs this, -regalloc=greedy sinks the spill instead.
@@ -70,7 +70,7 @@ bb26.preheader:                                   ; preds = %imix_test.exit
 bb23:                                             ; preds = %imix_test.exit
   unreachable
 ; Verify that there are no loads inside the loop.
-; X86-32: .align 4
+; X86-32: .p2align 4
 ; X86-32: %bb28
 ; X86-32-NOT: (%esp),
 ; X86-32-NOT: (%ebp),
@@ -152,7 +152,7 @@ entry:
 
 bb.nph:                                           ; preds = %entry
 ; X86-64: movq _map_4_to_16@GOTPCREL(%rip)
-; X86-64: .align 4
+; X86-64: .p2align 4
   %tmp5 = zext i32 undef to i64                   ; <i64> [#uses=1]
   %tmp6 = add i64 %tmp5, 1                        ; <i64> [#uses=1]
   %tmp11 = shl i64 undef, 1                       ; <i64> [#uses=1]

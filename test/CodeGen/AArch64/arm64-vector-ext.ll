@@ -1,9 +1,9 @@
-; RUN: llc < %s -march=arm64 -aarch64-neon-syntax=apple | FileCheck %s
+; RUN: llc < %s -mtriple=arm64-eabi -aarch64-neon-syntax=apple | FileCheck %s
 
 ;CHECK: @func30
+;CHECK: movi.4h v1, #1
+;CHECK: and.8b v0, v0, v1
 ;CHECK: ushll.4s  v0, v0, #0
-;CHECK: movi.4s v1, #0x1
-;CHECK: and.16b v0, v0, v1
 ;CHECK: str  q0, [x0]
 ;CHECK: ret
 
@@ -19,7 +19,7 @@ define void @func30(%T0_30 %v0, %T1_30* %p1) {
 ; sensible instead.
 define <1 x i32> @autogen_SD7918() {
 ; CHECK-LABEL: autogen_SD7918
-; CHECK: movi d0, #0000000000000000
+; CHECK: movi.2d v0, #0000000000000000
 ; CHECK-NEXT: ret
   %I29 = insertelement <1 x i1> zeroinitializer, i1 false, i32 0
   %ZE = zext <1 x i1> %I29 to <1 x i32>

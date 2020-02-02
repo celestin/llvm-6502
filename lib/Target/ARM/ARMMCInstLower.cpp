@@ -1,9 +1,8 @@
 //===-- ARMMCInstLower.cpp - Convert ARM MachineInstr to an MCInst --------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -14,45 +13,50 @@
 
 #include "ARM.h"
 #include "ARMAsmPrinter.h"
+#include "ARMBaseInstrInfo.h"
+#include "ARMMachineFunctionInfo.h"
+#include "ARMSubtarget.h"
+#include "MCTargetDesc/ARMAddressingModes.h"
 #include "MCTargetDesc/ARMBaseInfo.h"
 #include "MCTargetDesc/ARMMCExpr.h"
+#include "llvm/ADT/APFloat.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
+#include "llvm/CodeGen/MachineInstr.h"
+#include "llvm/CodeGen/MachineOperand.h"
 #include "llvm/IR/Constants.h"
-#include "llvm/IR/Mangler.h"
+#include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCInst.h"
-using namespace llvm;
+#include "llvm/MC/MCInstBuilder.h"
+#include "llvm/MC/MCStreamer.h"
+#include "llvm/Support/ErrorHandling.h"
+#include <cassert>
+#include <cstdint>
 
+using namespace llvm;
 
 MCOperand ARMAsmPrinter::GetSymbolRef(const MachineOperand &MO,
                                       const MCSymbol *Symbol) {
-  const MCExpr *Expr;
-  unsigned Option = MO.getTargetFlags() & ARMII::MO_OPTION_MASK;
-  switch (Option) {
-  default: {
-    Expr = MCSymbolRefExpr::create(Symbol, MCSymbolRefExpr::VK_None,
-                                   OutContext);
-    switch (Option) {
-    default: llvm_unreachable("Unknown target flag on symbol operand");
-    case ARMII::MO_NO_FLAG:
-      break;
-    case ARMII::MO_LO16:
-      Expr = MCSymbolRefExpr::create(Symbol, MCSymbolRefExpr::VK_None,
-                                     OutContext);
-      Expr = ARMMCExpr::createLower16(Expr, OutContext);
-      break;
-    case ARMII::MO_HI16:
-      Expr = MCSymbolRefExpr::create(Symbol, MCSymbolRefExpr::VK_None,
-                                     OutContext);
-      Expr = ARMMCExpr::createUpper16(Expr, OutContext);
-      break;
-    }
-    break;
-  }
+  MCSymbolRefExpr::VariantKind SymbolVariant = MCSymbolRefExpr::VK_None;
+  if (MO.getTargetFlags() & ARMII::MO_SBREL)
+    SymbolVariant = MCSymbolRefExpr::VK_ARM_SBREL;
 
-  case ARMII::MO_PLT:
-    Expr = MCSymbolRefExpr::create(Symbol, MCSymbolRefExpr::VK_PLT,
-                                   OutContext);
+  const MCExpr *Expr =
+      MCSymbolRefExpr::create(Symbol, SymbolVariant, OutContext);
+  switch (MO.getTargetFlags() & ARMII::MO_OPTION_MASK) {
+  default:
+    llvm_unreachable("Unknown target flag on symbol operand");
+  case ARMII::MO_NO_FLAG:
+    break;
+  case ARMII::MO_LO16:
+    Expr =
+        MCSymbolRefExpr::create(Symbol, SymbolVariant, OutContext);
+    Expr = ARMMCExpr::createLower16(Expr, OutContext);
+    break;
+  case ARMII::MO_HI16:
+    Expr =
+        MCSymbolRefExpr::create(Symbol, SymbolVariant, OutContext);
+    Expr = ARMMCExpr::createUpper16(Expr, OutContext);
     break;
   }
 
@@ -70,8 +74,8 @@ bool ARMAsmPrinter::lowerOperand(const MachineOperand &MO,
   switch (MO.getType()) {
   default: llvm_unreachable("unknown operand type");
   case MachineOperand::MO_Register:
-    // Ignore all non-CPSR implicit register operands.
-    if (MO.isImplicit() && MO.getReg() != ARM::CPSR)
+    // Ignore all implicit register operands.
+    if (MO.isImplicit())
       return false;
     assert(!MO.getSubReg() && "Subregs should be eliminated!");
     MCOp = MCOperand::createReg(MO.getReg());
@@ -83,19 +87,20 @@ bool ARMAsmPrinter::lowerOperand(const MachineOperand &MO,
     MCOp = MCOperand::createExpr(MCSymbolRefExpr::create(
         MO.getMBB()->getSymbol(), OutContext));
     break;
-  case MachineOperand::MO_GlobalAddress: {
+  case MachineOperand::MO_GlobalAddress:
     MCOp = GetSymbolRef(MO,
                         GetARMGVSymbol(MO.getGlobal(), MO.getTargetFlags()));
     break;
-  }
   case MachineOperand::MO_ExternalSymbol:
-   MCOp = GetSymbolRef(MO,
+    MCOp = GetSymbolRef(MO,
                         GetExternalSymbolSymbol(MO.getSymbolName()));
     break;
   case MachineOperand::MO_JumpTableIndex:
     MCOp = GetSymbolRef(MO, GetJTISymbol(MO.getIndex()));
     break;
   case MachineOperand::MO_ConstantPoolIndex:
+    if (Subtarget->genExecuteOnly())
+      llvm_unreachable("execute-only should not generate constant pools");
     MCOp = GetSymbolRef(MO, GetCPISymbol(MO.getIndex()));
     break;
   case MachineOperand::MO_BlockAddress:
@@ -104,7 +109,7 @@ bool ARMAsmPrinter::lowerOperand(const MachineOperand &MO,
   case MachineOperand::MO_FPImmediate: {
     APFloat Val = MO.getFPImm()->getValueAPF();
     bool ignored;
-    Val.convert(APFloat::IEEEdouble, APFloat::rmTowardZero, &ignored);
+    Val.convert(APFloat::IEEEdouble(), APFloat::rmTowardZero, &ignored);
     MCOp = MCOperand::createFPImm(Val.convertToDouble());
     break;
   }
@@ -147,9 +152,7 @@ void llvm::LowerARMMachineInstrToMCInst(const MachineInstr *MI, MCInst &OutMI,
     break;
   }
 
-  for (unsigned i = 0, e = MI->getNumOperands(); i != e; ++i) {
-    const MachineOperand &MO = MI->getOperand(i);
-
+  for (const MachineOperand &MO : MI->operands()) {
     MCOperand MCOp;
     if (AP.lowerOperand(MO, MCOp)) {
       if (MCOp.isImm() && EncodeImms) {
@@ -160,4 +163,70 @@ void llvm::LowerARMMachineInstrToMCInst(const MachineInstr *MI, MCInst &OutMI,
       OutMI.addOperand(MCOp);
     }
   }
+}
+
+void ARMAsmPrinter::EmitSled(const MachineInstr &MI, SledKind Kind)
+{
+  if (MI.getParent()->getParent()->getInfo<ARMFunctionInfo>()
+    ->isThumbFunction())
+  {
+    MI.emitError("An attempt to perform XRay instrumentation for a"
+      " Thumb function (not supported). Detected when emitting a sled.");
+    return;
+  }
+  static const int8_t NoopsInSledCount = 6;
+  // We want to emit the following pattern:
+  //
+  // .Lxray_sled_N:
+  //   ALIGN
+  //   B #20
+  //   ; 6 NOP instructions (24 bytes)
+  // .tmpN
+  //
+  // We need the 24 bytes (6 instructions) because at runtime, we'd be patching
+  // over the full 28 bytes (7 instructions) with the following pattern:
+  //
+  //   PUSH{ r0, lr }
+  //   MOVW r0, #<lower 16 bits of function ID>
+  //   MOVT r0, #<higher 16 bits of function ID>
+  //   MOVW ip, #<lower 16 bits of address of __xray_FunctionEntry/Exit>
+  //   MOVT ip, #<higher 16 bits of address of __xray_FunctionEntry/Exit>
+  //   BLX ip
+  //   POP{ r0, lr }
+  //
+  OutStreamer->EmitCodeAlignment(4);
+  auto CurSled = OutContext.createTempSymbol("xray_sled_", true);
+  OutStreamer->EmitLabel(CurSled);
+  auto Target = OutContext.createTempSymbol();
+
+  // Emit "B #20" instruction, which jumps over the next 24 bytes (because
+  // register pc is 8 bytes ahead of the jump instruction by the moment CPU
+  // is executing it).
+  // By analogy to ARMAsmPrinter::emitPseudoExpansionLowering() |case ARM::B|.
+  // It is not clear why |addReg(0)| is needed (the last operand).
+  EmitToStreamer(*OutStreamer, MCInstBuilder(ARM::Bcc).addImm(20)
+    .addImm(ARMCC::AL).addReg(0));
+
+  MCInst Noop;
+  Subtarget->getInstrInfo()->getNoop(Noop);
+  for (int8_t I = 0; I < NoopsInSledCount; I++)
+    OutStreamer->EmitInstruction(Noop, getSubtargetInfo());
+
+  OutStreamer->EmitLabel(Target);
+  recordSled(CurSled, MI, Kind);
+}
+
+void ARMAsmPrinter::LowerPATCHABLE_FUNCTION_ENTER(const MachineInstr &MI)
+{
+  EmitSled(MI, SledKind::FUNCTION_ENTER);
+}
+
+void ARMAsmPrinter::LowerPATCHABLE_FUNCTION_EXIT(const MachineInstr &MI)
+{
+  EmitSled(MI, SledKind::FUNCTION_EXIT);
+}
+
+void ARMAsmPrinter::LowerPATCHABLE_TAIL_CALL(const MachineInstr &MI)
+{
+  EmitSled(MI, SledKind::TAIL_CALL);
 }

@@ -1,9 +1,10 @@
 ; RUN: llc -filetype=obj -o %t.o < %s >/dev/null 2>&1
-; RUN: llvm-dwarfdump -debug-dump=info %t.o | FileCheck %s
+; RUN: llvm-dwarfdump -v -debug-info %t.o | FileCheck %s
 
 ; CHECK: DW_TAG_structure_type
 ; CHECK:  DW_AT_APPLE_objc_complete_type
 ; CHECK:  DW_AT_name [DW_FORM_strp] ( .debug_str[0x{{[0-9a-fA-F]+}}] = "Foo")
+; CHECK   DW_AT_APPLE_runtime_class [DW_FORM_data1]       (DW_LANG_ObjC)
 ; CHECK: DW_TAG_APPLE_property
 ; CHECK:  DW_AT_APPLE_property_name [DW_FORM_strp] ( .debug_str[0x{{[0-9a-fA-F]+}}] = "foo")
 
@@ -51,7 +52,7 @@ target triple = "x86_64-apple-macosx10.9.0"
 @llvm.used = appending global [8 x i8*] [i8* getelementptr inbounds ([4 x i8], [4 x i8]* @"\01L_OBJC_CLASS_NAME_", i32 0, i32 0), i8* getelementptr inbounds ([4 x i8], [4 x i8]* @"\01L_OBJC_METH_VAR_NAME_", i32 0, i32 0), i8* getelementptr inbounds ([8 x i8], [8 x i8]* @"\01L_OBJC_METH_VAR_TYPE_", i32 0, i32 0), i8* bitcast ({ i32, i32, [1 x %struct._objc_method] }* @"\01l_OBJC_$_INSTANCE_METHODS_Foo" to i8*), i8* getelementptr inbounds ([4 x i8], [4 x i8]* @"\01L_OBJC_PROP_NAME_ATTR_", i32 0, i32 0), i8* getelementptr inbounds ([7 x i8], [7 x i8]* @"\01L_OBJC_PROP_NAME_ATTR_1", i32 0, i32 0), i8* bitcast ({ i32, i32, [1 x %struct._prop_t] }* @"\01l_OBJC_$_PROP_LIST_Foo" to i8*), i8* bitcast ([1 x i8*]* @"\01L_OBJC_LABEL_CLASS_$" to i8*)], section "llvm.metadata"
 
 ; Function Attrs: ssp uwtable
-define internal void @"\01-[Foo foo]"(%0* %self, i8* %_cmd) #0 {
+define internal void @"\01-[Foo foo]"(%0* %self, i8* %_cmd) #0 !dbg !10 {
 entry:
   %self.addr = alloca %0*, align 8
   %_cmd.addr = alloca i8*, align 8
@@ -72,7 +73,7 @@ attributes #1 = { nounwind readnone }
 !llvm.module.flags = !{!17, !18, !19, !20, !21, !22}
 !llvm.ident = !{!23}
 
-!0 = !DICompileUnit(language: DW_LANG_ObjC, isOptimized: false, runtimeVersion: 2, emissionKind: 0, file: !1, enums: !2, retainedTypes: !3, subprograms: !9, globals: !2, imports: !2)
+!0 = distinct !DICompileUnit(language: DW_LANG_ObjC, isOptimized: false, runtimeVersion: 2, emissionKind: FullDebug, file: !1, enums: !2, retainedTypes: !3, globals: !2, imports: !2)
 !1 = !DIFile(filename: "-", directory: "")
 !2 = !{}
 !3 = !{!4}
@@ -81,8 +82,7 @@ attributes #1 = { nounwind readnone }
 !6 = !DIFile(filename: "<stdin>", directory: "")
 !7 = !{!8}
 !8 = !DIObjCProperty(name: "foo", line: 2, attributes: 2117, file: !6)
-!9 = !{!10}
-!10 = !DISubprogram(name: "-[Foo foo]", line: 5, isLocal: true, isDefinition: true, virtualIndex: 6, flags: DIFlagPrototyped, isOptimized: false, scopeLine: 5, file: !5, scope: !6, type: !11, function: void (%0*, i8*)* @"\01-[Foo foo]", variables: !2)
+!10 = distinct !DISubprogram(name: "-[Foo foo]", line: 5, isLocal: true, isDefinition: true, virtualIndex: 6, flags: DIFlagPrototyped, isOptimized: false, unit: !0, scopeLine: 5, file: !5, scope: !6, type: !11, retainedNodes: !2)
 !11 = !DISubroutineType(types: !12)
 !12 = !{null, !13, !14}
 !13 = !DIDerivedType(tag: DW_TAG_pointer_type, size: 64, align: 64, flags: DIFlagArtificial | DIFlagObjectPointer, baseType: !4)

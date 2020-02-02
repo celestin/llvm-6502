@@ -1,24 +1,28 @@
-//===-- DWARFDebugLoc.h -----------------------------------------*- C++ -*-===//
+//===- DWARFDebugLoc.h ------------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIB_DEBUGINFO_DWARFDEBUGLOC_H
-#define LLVM_LIB_DEBUGINFO_DWARFDEBUGLOC_H
+#ifndef LLVM_DEBUGINFO_DWARF_DWARFDEBUGLOC_H
+#define LLVM_DEBUGINFO_DWARF_DWARFDEBUGLOC_H
 
+#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/DebugInfo/DIContext.h"
+#include "llvm/DebugInfo/DWARF/DWARFDataExtractor.h"
 #include "llvm/DebugInfo/DWARF/DWARFRelocMap.h"
-#include "llvm/Support/DataExtractor.h"
+#include <cstdint>
 
 namespace llvm {
-
+class DWARFUnit;
+class MCRegisterInfo;
 class raw_ostream;
 
 class DWARFDebugLoc {
+public:
   /// A single location within a location list.
   struct Entry {
     /// The beginning address of the instruction range.
@@ -26,56 +30,93 @@ class DWARFDebugLoc {
     /// The ending address of the instruction range.
     uint64_t End;
     /// The location of the variable within the specified range.
-    SmallVector<unsigned char, 4> Loc;
+    SmallVector<uint8_t, 4> Loc;
   };
 
   /// A list of locations that contain one variable.
   struct LocationList {
     /// The beginning offset where this location list is stored in the debug_loc
     /// section.
-    unsigned Offset;
+    uint64_t Offset;
     /// All the locations in which the variable is stored.
     SmallVector<Entry, 2> Entries;
+    /// Dump this list on OS.
+    void dump(raw_ostream &OS, uint64_t BaseAddress, bool IsLittleEndian,
+              unsigned AddressSize, const MCRegisterInfo *MRI, DWARFUnit *U,
+              DIDumpOptions DumpOpts,
+              unsigned Indent) const;
   };
 
-  typedef SmallVector<LocationList, 4> LocationLists;
+private:
+  using LocationLists = SmallVector<LocationList, 4>;
 
   /// A list of all the variables in the debug_loc section, each one describing
   /// the locations in which the variable is stored.
   LocationLists Locations;
 
-  /// A map used to resolve binary relocations.
-  const RelocAddrMap &RelocMap;
+  unsigned AddressSize;
+
+  bool IsLittleEndian;
 
 public:
-  DWARFDebugLoc(const RelocAddrMap &LocRelocMap) : RelocMap(LocRelocMap) {}
   /// Print the location lists found within the debug_loc section.
-  void dump(raw_ostream &OS) const;
+  void dump(raw_ostream &OS, const MCRegisterInfo *RegInfo, DIDumpOptions DumpOpts,
+            Optional<uint64_t> Offset) const;
+
   /// Parse the debug_loc section accessible via the 'data' parameter using the
-  /// specified address size to interpret the address ranges.
-  void parse(DataExtractor data, unsigned AddressSize);
+  /// address size also given in 'data' to interpret the address ranges.
+  void parse(const DWARFDataExtractor &data);
+
+  /// Return the location list at the given offset or nullptr.
+  LocationList const *getLocationListAtOffset(uint64_t Offset) const;
+
+  Expected<LocationList>
+  parseOneLocationList(const DWARFDataExtractor &Data, uint64_t *Offset);
 };
 
-class DWARFDebugLocDWO {
+class DWARFDebugLoclists {
+public:
   struct Entry {
-    uint64_t Start;
-    uint32_t Length;
-    SmallVector<unsigned char, 4> Loc;
+    uint8_t Kind;
+    uint64_t Offset;
+    uint64_t Value0;
+    uint64_t Value1;
+    SmallVector<uint8_t, 4> Loc;
+    void dump(raw_ostream &OS, uint64_t &BaseAddr, bool IsLittleEndian,
+              unsigned AddressSize, const MCRegisterInfo *MRI, DWARFUnit *U,
+              DIDumpOptions DumpOpts, unsigned Indent, size_t MaxEncodingStringLength) const;
   };
 
   struct LocationList {
-    unsigned Offset;
+    uint64_t Offset;
     SmallVector<Entry, 2> Entries;
+    void dump(raw_ostream &OS, uint64_t BaseAddr, bool IsLittleEndian,
+              unsigned AddressSize, const MCRegisterInfo *RegInfo,
+              DWARFUnit *U, DIDumpOptions DumpOpts, unsigned Indent) const;
   };
 
-  typedef SmallVector<LocationList, 4> LocationLists;
+private:
+  using LocationLists = SmallVector<LocationList, 4>;
 
   LocationLists Locations;
 
-public:
-  void parse(DataExtractor data);
-  void dump(raw_ostream &OS) const;
-};
-}
+  unsigned AddressSize;
 
-#endif
+  bool IsLittleEndian;
+
+public:
+  void parse(DataExtractor data, uint64_t Offset, uint64_t EndOffset, uint16_t Version);
+  void dump(raw_ostream &OS, uint64_t BaseAddr, const MCRegisterInfo *RegInfo,
+            DIDumpOptions DumpOpts, Optional<uint64_t> Offset) const;
+
+  /// Return the location list at the given offset or nullptr.
+  LocationList const *getLocationListAtOffset(uint64_t Offset) const;
+
+  static Expected<LocationList> parseOneLocationList(const DataExtractor &Data,
+                                                     uint64_t *Offset,
+                                                     unsigned Version);
+};
+
+} // end namespace llvm
+
+#endif // LLVM_DEBUGINFO_DWARF_DWARFDEBUGLOC_H

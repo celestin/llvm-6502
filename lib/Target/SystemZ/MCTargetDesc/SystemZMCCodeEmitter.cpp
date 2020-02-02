@@ -1,9 +1,8 @@
 //===-- SystemZMCCodeEmitter.cpp - Convert SystemZ code to machine code ---===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -11,20 +10,28 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "MCTargetDesc/SystemZMCTargetDesc.h"
 #include "MCTargetDesc/SystemZMCFixups.h"
+#include "MCTargetDesc/SystemZMCTargetDesc.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/MC/MCCodeEmitter.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCExpr.h"
+#include "llvm/MC/MCFixup.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
+#include "llvm/MC/MCSubtargetInfo.h"
+#include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/raw_ostream.h"
+#include <cassert>
+#include <cstdint>
 
 using namespace llvm;
 
 #define DEBUG_TYPE "mccodeemitter"
 
 namespace {
+
 class SystemZMCCodeEmitter : public MCCodeEmitter {
   const MCInstrInfo &MCII;
   MCContext &Ctx;
@@ -34,7 +41,7 @@ public:
     : MCII(mcii), Ctx(ctx) {
   }
 
-  ~SystemZMCCodeEmitter() override {}
+  ~SystemZMCCodeEmitter() override = default;
 
   // OVerride MCCodeEmitter.
   void encodeInstruction(const MCInst &MI, raw_ostream &OS,
@@ -69,9 +76,15 @@ private:
   uint64_t getBDXAddr20Encoding(const MCInst &MI, unsigned OpNum,
                                 SmallVectorImpl<MCFixup> &Fixups,
                                 const MCSubtargetInfo &STI) const;
+  uint64_t getBDLAddr12Len4Encoding(const MCInst &MI, unsigned OpNum,
+                                    SmallVectorImpl<MCFixup> &Fixups,
+                                    const MCSubtargetInfo &STI) const;
   uint64_t getBDLAddr12Len8Encoding(const MCInst &MI, unsigned OpNum,
                                     SmallVectorImpl<MCFixup> &Fixups,
                                     const MCSubtargetInfo &STI) const;
+  uint64_t getBDRAddr12Encoding(const MCInst &MI, unsigned OpNum,
+                                SmallVectorImpl<MCFixup> &Fixups,
+                                const MCSubtargetInfo &STI) const;
   uint64_t getBDVAddr12Encoding(const MCInst &MI, unsigned OpNum,
                                 SmallVectorImpl<MCFixup> &Fixups,
                                 const MCSubtargetInfo &STI) const;
@@ -110,19 +123,41 @@ private:
     return getPCRelEncoding(MI, OpNum, Fixups,
                             SystemZ::FK_390_PC32DBL, 2, true);
   }
-};
-} // end anonymous namespace
+  uint64_t getPC12DBLBPPEncoding(const MCInst &MI, unsigned OpNum,
+                                 SmallVectorImpl<MCFixup> &Fixups,
+                                 const MCSubtargetInfo &STI) const {
+    return getPCRelEncoding(MI, OpNum, Fixups,
+                            SystemZ::FK_390_PC12DBL, 1, false);
+  }
+  uint64_t getPC16DBLBPPEncoding(const MCInst &MI, unsigned OpNum,
+                                 SmallVectorImpl<MCFixup> &Fixups,
+                                 const MCSubtargetInfo &STI) const {
+    return getPCRelEncoding(MI, OpNum, Fixups,
+                            SystemZ::FK_390_PC16DBL, 4, false);
+  }
+  uint64_t getPC24DBLBPPEncoding(const MCInst &MI, unsigned OpNum,
+                                 SmallVectorImpl<MCFixup> &Fixups,
+                                 const MCSubtargetInfo &STI) const {
+    return getPCRelEncoding(MI, OpNum, Fixups,
+                            SystemZ::FK_390_PC24DBL, 3, false);
+  }
 
-MCCodeEmitter *llvm::createSystemZMCCodeEmitter(const MCInstrInfo &MCII,
-                                                const MCRegisterInfo &MRI,
-                                                MCContext &Ctx) {
-  return new SystemZMCCodeEmitter(MCII, Ctx);
-}
+private:
+  FeatureBitset computeAvailableFeatures(const FeatureBitset &FB) const;
+  void
+  verifyInstructionPredicates(const MCInst &MI,
+                              const FeatureBitset &AvailableFeatures) const;
+};
+
+} // end anonymous namespace
 
 void SystemZMCCodeEmitter::
 encodeInstruction(const MCInst &MI, raw_ostream &OS,
                   SmallVectorImpl<MCFixup> &Fixups,
                   const MCSubtargetInfo &STI) const {
+  verifyInstructionPredicates(MI,
+                              computeAvailableFeatures(STI.getFeatureBits()));
+
   uint64_t Bits = getBinaryCodeForInstr(MI, Fixups, STI);
   unsigned Size = MCII.get(MI.getOpcode()).getSize();
   // Big-endian insertion of Size bytes.
@@ -188,6 +223,17 @@ getBDXAddr20Encoding(const MCInst &MI, unsigned OpNum,
 }
 
 uint64_t SystemZMCCodeEmitter::
+getBDLAddr12Len4Encoding(const MCInst &MI, unsigned OpNum,
+                         SmallVectorImpl<MCFixup> &Fixups,
+                         const MCSubtargetInfo &STI) const {
+  uint64_t Base = getMachineOpValue(MI, MI.getOperand(OpNum), Fixups, STI);
+  uint64_t Disp = getMachineOpValue(MI, MI.getOperand(OpNum + 1), Fixups, STI);
+  uint64_t Len  = getMachineOpValue(MI, MI.getOperand(OpNum + 2), Fixups, STI) - 1;
+  assert(isUInt<4>(Base) && isUInt<12>(Disp) && isUInt<4>(Len));
+  return (Len << 16) | (Base << 12) | Disp;
+}
+
+uint64_t SystemZMCCodeEmitter::
 getBDLAddr12Len8Encoding(const MCInst &MI, unsigned OpNum,
                          SmallVectorImpl<MCFixup> &Fixups,
                          const MCSubtargetInfo &STI) const {
@@ -195,6 +241,17 @@ getBDLAddr12Len8Encoding(const MCInst &MI, unsigned OpNum,
   uint64_t Disp = getMachineOpValue(MI, MI.getOperand(OpNum + 1), Fixups, STI);
   uint64_t Len  = getMachineOpValue(MI, MI.getOperand(OpNum + 2), Fixups, STI) - 1;
   assert(isUInt<4>(Base) && isUInt<12>(Disp) && isUInt<8>(Len));
+  return (Len << 16) | (Base << 12) | Disp;
+}
+
+uint64_t SystemZMCCodeEmitter::
+getBDRAddr12Encoding(const MCInst &MI, unsigned OpNum,
+                     SmallVectorImpl<MCFixup> &Fixups,
+                     const MCSubtargetInfo &STI) const {
+  uint64_t Base = getMachineOpValue(MI, MI.getOperand(OpNum), Fixups, STI);
+  uint64_t Disp = getMachineOpValue(MI, MI.getOperand(OpNum + 1), Fixups, STI);
+  uint64_t Len  = getMachineOpValue(MI, MI.getOperand(OpNum + 2), Fixups, STI);
+  assert(isUInt<4>(Base) && isUInt<12>(Disp) && isUInt<4>(Len));
   return (Len << 16) | (Base << 12) | Disp;
 }
 
@@ -240,4 +297,11 @@ SystemZMCCodeEmitter::getPCRelEncoding(const MCInst &MI, unsigned OpNum,
   return 0;
 }
 
+#define ENABLE_INSTR_PREDICATE_VERIFIER
 #include "SystemZGenMCCodeEmitter.inc"
+
+MCCodeEmitter *llvm::createSystemZMCCodeEmitter(const MCInstrInfo &MCII,
+                                                const MCRegisterInfo &MRI,
+                                                MCContext &Ctx) {
+  return new SystemZMCCodeEmitter(MCII, Ctx);
+}

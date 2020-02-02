@@ -1,5 +1,5 @@
 // RUN: llvm-mc < %s -filetype=obj -triple powerpc64le-pc-linux | \
-// RUN:   llvm-readobj -t | FileCheck %s
+// RUN:   llvm-readobj --symbols | FileCheck %s
 
 // This used to crash. Make sure it produce the correct symbol.
 
@@ -9,8 +9,9 @@
 // CHECK-NEXT:    Size: 0
 // CHECK-NEXT:    Binding: Local (0x0)
 // CHECK-NEXT:    Type: None (0x0)
-// CHECK-NEXT:    Other: 64
-// CHECK-NEXT:    Section: .group (0x5)
+// CHECK-NEXT:    Other [ (0x40)
+// CHECK-NEXT:    ]
+// CHECK-NEXT:    Section: .group
 // CHECK-NEXT:  }
 
 

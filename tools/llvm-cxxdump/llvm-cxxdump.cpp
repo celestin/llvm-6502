@@ -1,9 +1,8 @@
 //===- llvm-cxxdump.cpp - Dump C++ data in an Object File -------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -20,11 +19,10 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/Endian.h"
 #include "llvm/Support/FileSystem.h"
-#include "llvm/Support/ManagedStatic.h"
-#include "llvm/Support/PrettyStackTrace.h"
-#include "llvm/Support/Signals.h"
+#include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/TargetSelect.h"
+#include "llvm/Support/WithColor.h"
 #include "llvm/Support/raw_ostream.h"
 #include <map>
 #include <string>
@@ -45,9 +43,23 @@ namespace llvm {
 static void error(std::error_code EC) {
   if (!EC)
     return;
-  outs() << "\nError reading file: " << EC.message() << ".\n";
+  WithColor::error(outs(), "") << "reading file: " << EC.message() << ".\n";
   outs().flush();
   exit(1);
+}
+
+LLVM_ATTRIBUTE_NORETURN static void error(Error Err) {
+  logAllUnhandledErrors(std::move(Err), WithColor::error(outs()),
+                        "reading file: ");
+  outs().flush();
+  exit(1);
+}
+
+template <typename T>
+T unwrapOrError(Expected<T> EO) {
+  if (!EO)
+    error(EO.takeError());
+  return std::move(*EO);
 }
 
 } // namespace llvm
@@ -55,7 +67,7 @@ static void error(std::error_code EC) {
 static void reportError(StringRef Input, StringRef Message) {
   if (Input == "-")
     Input = "<stdin>";
-  errs() << Input << ": " << Message << "\n";
+  WithColor::error(errs(), Input) << Message << "\n";
   errs().flush();
   exit(1);
 }
@@ -64,20 +76,7 @@ static void reportError(StringRef Input, std::error_code EC) {
   reportError(Input, EC.message());
 }
 
-static SmallVectorImpl<SectionRef> &getRelocSections(const ObjectFile *Obj,
-                                                     const SectionRef &Sec) {
-  static bool MappingDone = false;
-  static std::map<SectionRef, SmallVector<SectionRef, 1>> SectionRelocMap;
-  if (!MappingDone) {
-    for (const SectionRef &Section : Obj->sections()) {
-      section_iterator Sec2 = Section.getRelocatedSection();
-      if (Sec2 != Obj->section_end())
-        SectionRelocMap[*Sec2].push_back(Section);
-    }
-    MappingDone = true;
-  }
-  return SectionRelocMap[Sec];
-}
+static std::map<SectionRef, SmallVector<SectionRef, 1>> SectionRelocMap;
 
 static void collectRelocatedSymbols(const ObjectFile *Obj,
                                     const SectionRef &Sec, uint64_t SecAddress,
@@ -85,15 +84,15 @@ static void collectRelocatedSymbols(const ObjectFile *Obj,
                                     StringRef *I, StringRef *E) {
   uint64_t SymOffset = SymAddress - SecAddress;
   uint64_t SymEnd = SymOffset + SymSize;
-  for (const SectionRef &SR : getRelocSections(Obj, Sec)) {
+  for (const SectionRef &SR : SectionRelocMap[Sec]) {
     for (const object::RelocationRef &Reloc : SR.relocations()) {
       if (I == E)
         break;
       const object::symbol_iterator RelocSymI = Reloc.getSymbol();
       if (RelocSymI == Obj->symbol_end())
         continue;
-      ErrorOr<StringRef> RelocSymName = RelocSymI->getName();
-      error(RelocSymName.getError());
+      Expected<StringRef> RelocSymName = RelocSymI->getName();
+      error(errorToErrorCode(RelocSymName.takeError()));
       uint64_t Offset = Reloc.getOffset();
       if (Offset >= SymOffset && Offset < SymEnd) {
         *I = *RelocSymName;
@@ -109,13 +108,13 @@ static void collectRelocationOffsets(
     std::map<std::pair<StringRef, uint64_t>, StringRef> &Collection) {
   uint64_t SymOffset = SymAddress - SecAddress;
   uint64_t SymEnd = SymOffset + SymSize;
-  for (const SectionRef &SR : getRelocSections(Obj, Sec)) {
+  for (const SectionRef &SR : SectionRelocMap[Sec]) {
     for (const object::RelocationRef &Reloc : SR.relocations()) {
       const object::symbol_iterator RelocSymI = Reloc.getSymbol();
       if (RelocSymI == Obj->symbol_end())
         continue;
-      ErrorOr<StringRef> RelocSymName = RelocSymI->getName();
-      error(RelocSymName.getError());
+      Expected<StringRef> RelocSymName = RelocSymI->getName();
+      error(errorToErrorCode(RelocSymName.takeError()));
       uint64_t Offset = Reloc.getOffset();
       if (Offset >= SymOffset && Offset < SymEnd)
         Collection[std::make_pair(SymName, Offset - SymOffset)] = *RelocSymName;
@@ -173,6 +172,17 @@ static void dumpCXXData(const ObjectFile *Obj) {
   std::map<std::pair<StringRef, uint64_t>, StringRef> VTTEntries;
   std::map<StringRef, StringRef> TINames;
 
+  SectionRelocMap.clear();
+  for (const SectionRef &Section : Obj->sections()) {
+    Expected<section_iterator> ErrOrSec = Section.getRelocatedSection();
+    if (!ErrOrSec)
+      error(ErrOrSec.takeError());
+
+    section_iterator Sec2 = *ErrOrSec;
+    if (Sec2 != Obj->section_end())
+      SectionRelocMap[*Sec2].push_back(Section);
+  }
+
   uint8_t BytesInAddress = Obj->getBytesInAddress();
 
   std::vector<std::pair<SymbolRef, uint64_t>> SymAddr =
@@ -181,11 +191,12 @@ static void dumpCXXData(const ObjectFile *Obj) {
   for (auto &P : SymAddr) {
     object::SymbolRef Sym = P.first;
     uint64_t SymSize = P.second;
-    ErrorOr<StringRef> SymNameOrErr = Sym.getName();
-    error(SymNameOrErr.getError());
+    Expected<StringRef> SymNameOrErr = Sym.getName();
+    error(errorToErrorCode(SymNameOrErr.takeError()));
     StringRef SymName = *SymNameOrErr;
-    object::section_iterator SecI(Obj->section_begin());
-    error(Sym.getSection(SecI));
+    Expected<object::section_iterator> SecIOrErr = Sym.getSection();
+    error(errorToErrorCode(SecIOrErr.takeError()));
+    object::section_iterator SecI = *SecIOrErr;
     // Skip external symbols.
     if (SecI == Obj->section_end())
       continue;
@@ -193,10 +204,9 @@ static void dumpCXXData(const ObjectFile *Obj) {
     // Skip virtual or BSS sections.
     if (Sec.isBSS() || Sec.isVirtual())
       continue;
-    StringRef SecContents;
-    error(Sec.getContents(SecContents));
-    ErrorOr<uint64_t> SymAddressOrErr = Sym.getAddress();
-    error(SymAddressOrErr.getError());
+    StringRef SecContents = unwrapOrError(Sec.getContents());
+    Expected<uint64_t> SymAddressOrErr = Sym.getAddress();
+    error(errorToErrorCode(SymAddressOrErr.takeError()));
     uint64_t SymAddress = *SymAddressOrErr;
     uint64_t SecAddress = Sec.getAddress();
     uint64_t SecSize = Sec.getSize();
@@ -223,7 +233,7 @@ static void dumpCXXData(const ObjectFile *Obj) {
     // Complete object locators in the MS-ABI start with '??_R4'
     else if (SymName.startswith("??_R4")) {
       CompleteObjectLocator COL;
-      COL.Data = ArrayRef<little32_t>(
+      COL.Data = makeArrayRef(
           reinterpret_cast<const little32_t *>(SymContents.data()), 3);
       StringRef *I = std::begin(COL.Symbols), *E = std::end(COL.Symbols);
       collectRelocatedSymbols(Obj, Sec, SecAddress, SymAddress, SymSize, I, E);
@@ -232,7 +242,7 @@ static void dumpCXXData(const ObjectFile *Obj) {
     // Class hierarchy descriptors in the MS-ABI start with '??_R3'
     else if (SymName.startswith("??_R3")) {
       ClassHierarchyDescriptor CHD;
-      CHD.Data = ArrayRef<little32_t>(
+      CHD.Data = makeArrayRef(
           reinterpret_cast<const little32_t *>(SymContents.data()), 3);
       StringRef *I = std::begin(CHD.Symbols), *E = std::end(CHD.Symbols);
       collectRelocatedSymbols(Obj, Sec, SecAddress, SymAddress, SymSize, I, E);
@@ -248,7 +258,7 @@ static void dumpCXXData(const ObjectFile *Obj) {
     // Base class descriptors in the MS-ABI start with '??_R1'
     else if (SymName.startswith("??_R1")) {
       BaseClassDescriptor BCD;
-      BCD.Data = ArrayRef<little32_t>(
+      BCD.Data = makeArrayRef(
           reinterpret_cast<const little32_t *>(SymContents.data()) + 1, 5);
       StringRef *I = std::begin(BCD.Symbols), *E = std::end(BCD.Symbols);
       collectRelocatedSymbols(Obj, Sec, SecAddress, SymAddress, SymSize, I, E);
@@ -487,12 +497,19 @@ static void dumpCXXData(const ObjectFile *Obj) {
 }
 
 static void dumpArchive(const Archive *Arc) {
-  for (const Archive::Child &ArcC : Arc->children()) {
-    ErrorOr<std::unique_ptr<Binary>> ChildOrErr = ArcC.getAsBinary();
-    if (std::error_code EC = ChildOrErr.getError()) {
+  Error Err = Error::success();
+  for (auto &ArcC : Arc->children(Err)) {
+    Expected<std::unique_ptr<Binary>> ChildOrErr = ArcC.getAsBinary();
+    if (!ChildOrErr) {
       // Ignore non-object files.
-      if (EC != object_error::invalid_file_type)
-        reportError(Arc->getFileName(), EC.message());
+      if (auto E = isNotObjectErrorInvalidFileType(ChildOrErr.takeError())) {
+        std::string Buf;
+        raw_string_ostream OS(Buf);
+        logAllUnhandledErrors(std::move(E), OS);
+        OS.flush();
+        reportError(Arc->getFileName(), Buf);
+      }
+      consumeError(ChildOrErr.takeError());
       continue;
     }
 
@@ -501,18 +518,15 @@ static void dumpArchive(const Archive *Arc) {
     else
       reportError(Arc->getFileName(), cxxdump_error::unrecognized_file_format);
   }
+  if (Err)
+    error(std::move(Err));
 }
 
 static void dumpInput(StringRef File) {
-  // If file isn't stdin, check that it exists.
-  if (File != "-" && !sys::fs::exists(File)) {
-    reportError(File, cxxdump_error::file_not_found);
-    return;
-  }
-
   // Attempt to open the binary.
-  ErrorOr<OwningBinary<Binary>> BinaryOrErr = createBinary(File);
-  if (std::error_code EC = BinaryOrErr.getError()) {
+  Expected<OwningBinary<Binary>> BinaryOrErr = createBinary(File);
+  if (!BinaryOrErr) {
+    auto EC = errorToErrorCode(BinaryOrErr.takeError());
     reportError(File, EC);
     return;
   }
@@ -527,9 +541,7 @@ static void dumpInput(StringRef File) {
 }
 
 int main(int argc, const char *argv[]) {
-  sys::PrintStackTraceOnErrorSignal();
-  PrettyStackTraceProgram X(argc, argv);
-  llvm_shutdown_obj Y;
+  InitLLVM X(argc, argv);
 
   // Initialize targets.
   llvm::InitializeAllTargetInfos();
@@ -543,8 +555,7 @@ int main(int argc, const char *argv[]) {
   if (opts::InputFilenames.size() == 0)
     opts::InputFilenames.push_back("-");
 
-  std::for_each(opts::InputFilenames.begin(), opts::InputFilenames.end(),
-                dumpInput);
+  llvm::for_each(opts::InputFilenames, dumpInput);
 
   return EXIT_SUCCESS;
 }

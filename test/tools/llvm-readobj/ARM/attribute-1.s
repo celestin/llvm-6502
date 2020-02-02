@@ -1,6 +1,6 @@
 @ RUN: llvm-mc -triple armv7-elf -filetype asm -o - %s | FileCheck %s
 @ RUN: llvm-mc -triple armv7-eabi -filetype obj -o - %s \
-@ RUN:   | llvm-readobj -arm-attributes - | FileCheck %s --check-prefix=CHECK-OBJ
+@ RUN:   | llvm-readobj --arch-specific - | FileCheck %s --check-prefix=CHECK-OBJ
 .eabi_attribute  Tag_CPU_arch, 1
 @CHECK:   .eabi_attribute 6, 1
 @CHECK-OBJ: Tag: 6
@@ -210,6 +210,13 @@
 @CHECK-OBJ-NEXT: Value: 1
 @CHECK-OBJ-NEXT: TagName: DIV_use
 @CHECK-OBJ-NEXT: Description: Not Permitted
+
+.eabi_attribute  Tag_DSP_extension, 1
+@CHECK:   .eabi_attribute 46, 1
+@CHECK-OBJ: Tag: 46
+@CHECK-OBJ-NEXT: Value: 1
+@CHECK-OBJ-NEXT: TagName: DSP_extension
+@CHECK-OBJ-NEXT: Description: Permitted
 
 .eabi_attribute  Tag_Virtualization_use, 1
 @CHECK:   .eabi_attribute 68, 1

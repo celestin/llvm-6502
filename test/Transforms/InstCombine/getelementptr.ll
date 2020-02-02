@@ -9,8 +9,8 @@ target datalayout = "e-p:64:64-p1:16:16-p2:32:32:32-p3:64:64:64"
 %struct.C = type { [7 x i8] }
 
 
-@Global = constant [10 x i8] c"helloworld"
-@Global_as1 = addrspace(1) constant [10 x i8] c"helloworld"
+@Global = external global [10 x i8]
+@Global_as1 = external addrspace(1) global [10 x i8]
 
 ; Test noop elimination
 define i32* @test1(i32* %I) {
@@ -177,11 +177,40 @@ define i1 @test13(i64 %X, %S* %P) {
 
 define <2 x i1> @test13_vector(<2 x i64> %X, <2 x %S*> %P) nounwind {
 ; CHECK-LABEL: @test13_vector(
-; CHECK-NEXT: shl nuw <2 x i64> %X, <i64 2, i64 2>
-; CHECK-NEXT: add <2 x i64> %A.idx, <i64 4, i64 4>
-; CHECK-NEXT: icmp eq <2 x i64> %A.offs, zeroinitializer
+; CHECK-NEXT:    [[C:%.*]] = icmp eq <2 x i64> %X, <i64 -1, i64 -1>
+; CHECK-NEXT:    ret <2 x i1> [[C]]
+;
   %A = getelementptr inbounds %S, <2 x %S*> %P, <2 x i64> zeroinitializer, <2 x i32> <i32 1, i32 1>, <2 x i64> %X
   %B = getelementptr inbounds %S, <2 x %S*> %P, <2 x i64> <i64 0, i64 0>, <2 x i32> <i32 0, i32 0>
+  %C = icmp eq <2 x i32*> %A, %B
+  ret <2 x i1> %C
+}
+
+define <2 x i1> @test13_vector2(i64 %X, <2 x %S*> %P) nounwind {
+; CHECK-LABEL: @test13_vector2(
+; CHECK-NEXT:    [[DOTSPLATINSERT:%.*]] = insertelement <2 x i64> undef, i64 [[X:%.*]], i32 0
+; CHECK-NEXT:    [[TMP1:%.*]] = shl <2 x i64> [[DOTSPLATINSERT]], <i64 2, i64 undef>
+; CHECK-NEXT:    [[A_IDX:%.*]] = shufflevector <2 x i64> [[TMP1]], <2 x i64> undef, <2 x i32> zeroinitializer
+; CHECK-NEXT:    [[C:%.*]] = icmp eq <2 x i64> [[A_IDX]], <i64 -4, i64 -4>
+; CHECK-NEXT:    ret <2 x i1> [[C]]
+;
+  %A = getelementptr inbounds %S, <2 x %S*> %P, <2 x i64> zeroinitializer, <2 x i32> <i32 1, i32 1>, i64 %X
+  %B = getelementptr inbounds %S, <2 x %S*> %P, <2 x i64> <i64 0, i64 0>, <2 x i32> <i32 0, i32 0>
+  %C = icmp eq <2 x i32*> %A, %B
+  ret <2 x i1> %C
+}
+
+; This is a test of icmp + shl nuw in disguise - 4611... is 0x3fff...
+define <2 x i1> @test13_vector3(i64 %X, <2 x %S*> %P) nounwind {
+; CHECK-LABEL: @test13_vector3(
+; CHECK-NEXT:    [[DOTSPLATINSERT:%.*]] = insertelement <2 x i64> undef, i64 [[X:%.*]], i32 0
+; CHECK-NEXT:    [[TMP1:%.*]] = shl <2 x i64> [[DOTSPLATINSERT]], <i64 2, i64 undef>
+; CHECK-NEXT:    [[A_IDX:%.*]] = shufflevector <2 x i64> [[TMP1]], <2 x i64> undef, <2 x i32> zeroinitializer
+; CHECK-NEXT:    [[C:%.*]] = icmp eq <2 x i64> [[A_IDX]], <i64 4, i64 4>
+; CHECK-NEXT:    ret <2 x i1> [[C]]
+;
+  %A = getelementptr inbounds %S, <2 x %S*> %P, <2 x i64> zeroinitializer, <2 x i32> <i32 1, i32 1>, i64 %X
+  %B = getelementptr inbounds %S, <2 x %S*> %P, <2 x i64> <i64 0, i64 0>, <2 x i32> <i32 1, i32 1>, i64 1
   %C = icmp eq <2 x i32*> %A, %B
   ret <2 x i1> %C
 }
@@ -198,10 +227,9 @@ define i1 @test13_as1(i16 %X, %S addrspace(1)* %P) {
 
 define <2 x i1> @test13_vector_as1(<2 x i16> %X, <2 x %S addrspace(1)*> %P) {
 ; CHECK-LABEL: @test13_vector_as1(
-; CHECK-NEXT: shl nuw <2 x i16> %X, <i16 2, i16 2>
-; CHECK-NEXT: add <2 x i16> %A.idx, <i16 4, i16 4>
-; CHECK-NEXT: icmp eq <2 x i16> %A.offs, zeroinitializer
-; CHECK-NEXT: ret <2 x i1>
+; CHECK-NEXT:    [[C:%.*]] = icmp eq <2 x i16> %X, <i16 -1, i16 -1>
+; CHECK-NEXT:    ret <2 x i1> [[C]]
+;
   %A = getelementptr inbounds %S, <2 x %S addrspace(1)*> %P, <2 x i16> <i16 0, i16 0>, <2 x i32> <i32 1, i32 1>, <2 x i16> %X
   %B = getelementptr inbounds %S, <2 x %S addrspace(1)*> %P, <2 x i16> <i16 0, i16 0>, <2 x i32> <i32 0, i32 0>
   %C = icmp eq <2 x i32 addrspace(1)*> %A, %B
@@ -366,7 +394,7 @@ define i32 @test21() {
         %rval = load i32, i32* %pbobel
         ret i32 %rval
 ; CHECK-LABEL: @test21(
-; CHECK: getelementptr %intstruct, %intstruct* %pbob1, i64 0, i32 0
+; CHECK: getelementptr inbounds %intstruct, %intstruct* %pbob1, i64 0, i32 0
 }
 
 
@@ -460,7 +488,7 @@ bb10:
 	%tmp.0.reg2mem.0.rec = mul i32 %indvar, -1
 	%tmp12.rec = add i32 %tmp.0.reg2mem.0.rec, -1
 	%tmp12 = getelementptr inbounds %struct.x, %struct.x* %tmp45, i32 %tmp12.rec
-	%tmp16 = call i32 (i8*, ...) @printf( i8* getelementptr ([12 x i8], [12 x i8]* @.str1, i32 0, i32 0), %struct.x* %tmp12 ) nounwind
+	%tmp16 = call i32 (i8*, ...) @printf( i8* nonnull dereferenceable(1) getelementptr ([12 x i8], [12 x i8]* @.str1, i32 0, i32 0), %struct.x* %tmp12 ) nounwind
 	%tmp84 = icmp eq %struct.x* %tmp12, %orientations62
 	%indvar.next = add i32 %indvar, 1
 	br i1 %tmp84, label %bb17, label %bb10
@@ -540,8 +568,8 @@ define i8* @test32(i8* %v) {
 	%G = load i8*, i8** %F
 	ret i8* %G
 ; CHECK-LABEL: @test32(
-; CHECK: %D = getelementptr [4 x i8*], [4 x i8*]* %A, i64 0, i64 1
-; CHECK: %F = getelementptr [4 x i8*], [4 x i8*]* %A, i64 0, i64 2
+; CHECK: %D = getelementptr inbounds [4 x i8*], [4 x i8*]* %A, i64 0, i64 1
+; CHECK: %F = getelementptr inbounds [4 x i8*], [4 x i8*]* %A, i64 0, i64 2
 }
 
 ; PR3290
@@ -621,18 +649,14 @@ define i32 @test35() nounwind {
              i8* getelementptr (%t1, %t1* bitcast (%t0* @s to %t1*), i32 0, i32 1, i32 0)) nounwind
   ret i32 0
 ; CHECK-LABEL: @test35(
-; CHECK: call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([17 x i8], [17 x i8]* @"\01LC8", i64 0, i64 0), i8* getelementptr inbounds (%t0, %t0* @s, i64 0, i32 1, i64 0)) [[NUW:#[0-9]+]]
+; CHECK: call i32 (i8*, ...) @printf(i8*  nonnull dereferenceable(1) getelementptr inbounds ([17 x i8], [17 x i8]* @"\01LC8", i64 0, i64 0), i8* getelementptr inbounds (%t0, %t0* @s, i64 0, i32 1, i64 0)) [[$NUW:#[0-9]+]]
 }
 
-; Instcombine should constant-fold the GEP so that indices that have
-; static array extents are within bounds of those array extents.
-; In the below, -1 is not in the range [0,11). After the transformation,
-; the same address is computed, but 3 is in the range of [0,11).
-
+; Don't treat signed offsets as unsigned.
 define i8* @test36() nounwind {
   ret i8* getelementptr ([11 x i8], [11 x i8]* @array, i32 0, i64 -1)
 ; CHECK-LABEL: @test36(
-; CHECK: ret i8* getelementptr ([11 x i8], [11 x i8]* @array, i64 1676976733973595601, i64 4)
+; CHECK: ret i8* getelementptr ([11 x i8], [11 x i8]* @array, i64 0, i64 -1)
 }
 
 ; Instcombine shouldn't assume that gep(A,0,1) != gep(A,1,0).
@@ -886,6 +910,33 @@ define %struct.C* @test46(%struct.C* %c1, %struct.C* %c2, i64 %N) {
 ; CHECK-NEXT:  ret %struct.C* [[GEP]]
 }
 
+define i32* @test47(i32* %I, i64 %C, i64 %D) {
+  %sub = sub i64 %D, %C
+  %A = getelementptr i32, i32* %I, i64 %C
+  %B = getelementptr i32, i32* %A, i64 %sub
+  ret i32* %B
+; CHECK-LABEL: @test47(
+; CHECK-NEXT: %B = getelementptr i32, i32* %I, i64 %D
+}
+
+define i32* @test48(i32* %I, i64 %C, i64 %D) {
+  %sub = sub i64 %D, %C
+  %A = getelementptr i32, i32* %I, i64 %sub
+  %B = getelementptr i32, i32* %A, i64 %C
+  ret i32* %B
+; CHECK-LABEL: @test48(
+; CHECK-NEXT: %B = getelementptr i32, i32* %I, i64 %D
+}
+
+define i32* @test49(i32* %I, i64 %C) {
+  %notC = xor i64 -1, %C
+  %A = getelementptr i32, i32* %I, i64 %C
+  %B = getelementptr i32, i32* %A, i64 %notC
+  ret i32* %B
+; CHECK-LABEL: @test49(
+; CHECK-NEXT: %B = getelementptr i32, i32* %I, i64 -1
+}
+
 define i32 addrspace(1)* @ascast_0_gep(i32* %p) nounwind {
 ; CHECK-LABEL: @ascast_0_gep(
 ; CHECK-NOT: getelementptr
@@ -907,4 +958,15 @@ define i32 addrspace(1)* @ascast_0_0_gep([128 x i32]* %p) nounwind {
   ret i32 addrspace(1)* %x
 }
 
-; CHECK: attributes [[NUW]] = { nounwind }
+define <2 x i32*> @PR32414(i32** %ptr) {
+; CHECK-LABEL: @PR32414(
+; CHECK-NEXT:    [[TMP0:%.*]] = bitcast i32** %ptr to i32*
+; CHECK-NEXT:    [[TMP1:%.*]] = getelementptr inbounds i32, i32* [[TMP0]], <2 x i64> <i64 0, i64 1>
+; CHECK-NEXT:    ret <2 x i32*> [[TMP1]]
+;
+  %tmp0 = bitcast i32** %ptr to i32*
+  %tmp1 = getelementptr inbounds i32, i32* %tmp0, <2 x i64> <i64 0, i64 1>
+  ret <2 x i32*> %tmp1
+}
+
+; CHECK: attributes [[$NUW]] = { nounwind }

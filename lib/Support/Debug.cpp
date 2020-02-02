@@ -1,9 +1,8 @@
 //===-- Debug.cpp - An easy way to add debug output to your code ----------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -11,15 +10,16 @@
 // code, without it being enabled all of the time, and without having to add
 // command line options to enable it.
 //
-// In particular, just wrap your code with the DEBUG() macro, and it will be
-// enabled automatically if you specify '-debug' on the command-line.
+// In particular, just wrap your code with the LLVM_DEBUG() macro, and it will
+// be enabled automatically if you specify '-debug' on the command-line.
 // Alternatively, you can also use the SET_DEBUG_TYPE("foo") macro to specify
 // that your debug code belongs to class "foo".  Then, on the command line, you
 // can specify '-debug-only=foo' to enable JUST the debug information for the
 // foo class.
 //
 // When compiling without assertions, the -debug-* options and all code in
-// DEBUG() statements disappears, so it does not affect the runtime of the code.
+// LLVM_DEBUG() statements disappears, so it does not affect the runtime of the
+// code.
 //
 //===----------------------------------------------------------------------===//
 
@@ -32,6 +32,7 @@
 
 #undef isCurrentDebugType
 #undef setCurrentDebugType
+#undef setCurrentDebugTypes
 
 using namespace llvm;
 
@@ -62,11 +63,17 @@ bool isCurrentDebugType(const char *DebugType) {
 /// option were specified.  Note that DebugFlag also needs to be set to true for
 /// debug output to be produced.
 ///
+void setCurrentDebugTypes(const char **Types, unsigned Count);
+
 void setCurrentDebugType(const char *Type) {
-  CurrentDebugType->clear();
-  CurrentDebugType->push_back(Type);
+  setCurrentDebugTypes(&Type, 1);
 }
 
+void setCurrentDebugTypes(const char **Types, unsigned Count) {
+  CurrentDebugType->clear();
+  for (size_t T = 0; T < Count; ++T)
+    CurrentDebugType->push_back(Types[T]);
+}
 } // namespace llvm
 
 // All Debug.h functionality is a no-op in NDEBUG mode.
@@ -95,7 +102,10 @@ struct DebugOnlyOpt {
     if (Val.empty())
       return;
     DebugFlag = true;
-    CurrentDebugType->push_back(Val);
+    SmallVector<StringRef,8> dbgTypes;
+    StringRef(Val).split(dbgTypes, ',', -1, false);
+    for (auto dbgType : dbgTypes)
+      CurrentDebugType->push_back(dbgType);
   }
 };
 
@@ -104,10 +114,9 @@ struct DebugOnlyOpt {
 static DebugOnlyOpt DebugOnlyOptLoc;
 
 static cl::opt<DebugOnlyOpt, true, cl::parser<std::string> >
-DebugOnly("debug-only", cl::desc("Enable a specific type of debug output"),
+DebugOnly("debug-only", cl::desc("Enable a specific type of debug output (comma separated list of types)"),
           cl::Hidden, cl::ZeroOrMore, cl::value_desc("debug string"),
           cl::location(DebugOnlyOptLoc), cl::ValueRequired);
-
 // Signal handlers - dump debug output on termination.
 static void debug_user_sig_handler(void *Cookie) {
   // This is a bit sneaky.  Since this is under #ifndef NDEBUG, we

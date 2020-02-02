@@ -1,9 +1,8 @@
 //===-- Thumb1InstrInfo.h - Thumb-1 Instruction Information -----*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -25,8 +24,8 @@ class Thumb1InstrInfo : public ARMBaseInstrInfo {
 public:
   explicit Thumb1InstrInfo(const ARMSubtarget &STI);
 
-  /// getNoopForMachoTarget - Return the noop instruction to use for a noop.
-  void getNoopForMachoTarget(MCInst &NopInst) const override;
+  /// Return the noop instruction to use for a noop.
+  void getNoop(MCInst &NopInst) const override;
 
   // Return the non-pre/post incrementing version of 'Opc'. Return 0
   // if there is not such an opcode.
@@ -38,9 +37,8 @@ public:
   ///
   const ThumbRegisterInfo &getRegisterInfo() const override { return RI; }
 
-  void copyPhysReg(MachineBasicBlock &MBB,
-                   MachineBasicBlock::iterator I, DebugLoc DL,
-                   unsigned DestReg, unsigned SrcReg,
+  void copyPhysReg(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
+                   const DebugLoc &DL, unsigned DestReg, unsigned SrcReg,
                    bool KillSrc) const override;
   void storeRegToStackSlot(MachineBasicBlock &MBB,
                            MachineBasicBlock::iterator MBBI,
@@ -54,9 +52,9 @@ public:
                             const TargetRegisterClass *RC,
                             const TargetRegisterInfo *TRI) const override;
 
+  bool canCopyGluedNodeDuringSchedule(SDNode *N) const override;
 private:
-  void expandLoadStackGuard(MachineBasicBlock::iterator MI,
-                            Reloc::Model RM) const override;
+  void expandLoadStackGuard(MachineBasicBlock::iterator MI) const override;
 };
 }
 

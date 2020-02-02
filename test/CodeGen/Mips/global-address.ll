@@ -1,9 +1,15 @@
-; RUN: llc -march=mipsel -relocation-model=pic < %s | FileCheck %s -check-prefix=PIC-O32
-; RUN: llc -march=mipsel -relocation-model=static -mtriple=mipsel-linux-gnu < %s | FileCheck %s -check-prefix=STATIC-O32
-; RUN: llc -march=mips64el -mcpu=mips64r2 -target-abi n32 -relocation-model=pic < %s | FileCheck %s -check-prefix=PIC-N32
-; RUN: llc -march=mips64el -mcpu=mips64r2 -target-abi n32 -relocation-model=static  -mtriple=mipsel-linux-gnu < %s | FileCheck %s -check-prefix=STATIC-N32
-; RUN: llc -march=mips64el -mcpu=mips64r2 -target-abi n64 -relocation-model=pic < %s | FileCheck %s -check-prefix=PIC-N64
-; RUN: llc -march=mips64el -mcpu=mips64r2 -target-abi n64 -relocation-model=static < %s | FileCheck %s -check-prefix=STATIC-N64
+; RUN: llc -march=mipsel \
+; RUN:     -relocation-model=pic < %s | FileCheck %s -check-prefix=PIC-O32
+; RUN: llc -march=mipsel -mtriple=mipsel-linux-gnu \
+; RUN:     -relocation-model=static < %s | FileCheck %s -check-prefix=STATIC-O32
+; RUN: llc -march=mips64el -mcpu=mips64r2 -target-abi n32 \
+; RUN:     -relocation-model=pic < %s | FileCheck %s -check-prefix=PIC-N32
+; RUN: llc -march=mips64el -mcpu=mips64r2 -target-abi n32 \
+; RUN:     -relocation-model=static < %s | FileCheck %s -check-prefix=STATIC-N32
+; RUN: llc -march=mips64el -mcpu=mips64r2 -target-abi n64 \
+; RUN:     -relocation-model=pic < %s | FileCheck %s -check-prefix=PIC-N64
+; RUN: llc -march=mips64el -mcpu=mips64r2 -target-abi n64 \
+; RUN:     -relocation-model=static < %s | FileCheck %s -check-prefix=STATIC-N64
 
 @s1 = internal unnamed_addr global i32 8, align 4
 @g1 = external global i32
@@ -29,9 +35,15 @@ entry:
 ; PIC-N64: ld  $[[R0:[0-9]+]], %got_page(s1)
 ; PIC-N64: lw  ${{[0-9]+}}, %got_ofst(s1)($[[R0]])
 ; PIC-N64: ld  ${{[0-9]+}}, %got_disp(g1)
-; STATIC-N64: ld  $[[R1:[0-9]+]], %got_page(s1)
-; STATIC-N64: lw  ${{[0-9]+}}, %got_ofst(s1)($[[R1]])
-; STATIC-N64: ld  ${{[0-9]+}}, %got_disp(g1)
+; STATIC-N64: lui $[[R1:[0-9]+]], %highest(s1)
+; STATIC-N64: daddiu ${{[0-9]+}}, ${{[0-9]+}}, %higher(s1)
+; STATIC-N64: daddiu ${{[0-9]+}}, ${{[0-9]+}}, %hi(s1)
+; STATIC-N64: dsll $[[R2:[0-9]+]], $[[R1]], 16
+; STATIC-N64: lw  ${{[0-9]+}}, %lo(s1)($[[R2]])
+; STATIC-N64: lui $[[R3:[0-9]+]], %highest(g1)
+; STATIC-N64: daddiu $[[R3]], $[[R3]], %higher(g1)
+; STATIC-N64: daddiu $[[R3]], $[[R3]], %hi(g1)
+; STATIC-N64: lw  ${{[0-9]+}}, %lo(g1)($[[R3]])
 
   %0 = load i32, i32* @s1, align 4
   tail call void @foo1(i32 %0) nounwind
@@ -43,4 +55,3 @@ entry:
 }
 
 declare void @foo1(i32)
-

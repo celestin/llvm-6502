@@ -28,18 +28,18 @@ Note that some code bases (e.g. ``libc++``) have really good reasons to deviate
 from the coding standards.  In the case of ``libc++``, this is because the
 naming and other conventions are dictated by the C++ standard.  If you think
 there is a specific good reason to deviate from the standards here, please bring
-it up on the LLVMdev mailing list.
+it up on the LLVM-dev mailing list.
 
 There are some conventions that are not uniformly followed in the code base
 (e.g. the naming convention).  This is because they are relatively new, and a
 lot of code was written before they were put in place.  Our long term goal is
 for the entire codebase to follow the convention, but we explicitly *do not*
-want patches that do large-scale reformating of existing code.  On the other
+want patches that do large-scale reformatting of existing code.  On the other
 hand, it is reasonable to rename the methods of a class if you're about to
-change it in some other way.  Just do the reformating as a separate commit from
-the functionality change.
+change it in some other way.  Just do the reformatting as a separate commit
+from the functionality change.
   
-The ultimate goal of these guidelines is the increase readability and
+The ultimate goal of these guidelines is to increase the readability and
 maintainability of our common source base. If you have suggestions for topics to
 be included, please mail them to `Chris <mailto:sabre@nondot.org>`_.
 
@@ -56,12 +56,12 @@ choice.
 C++ Standard Versions
 ---------------------
 
-LLVM, Clang, and LLD are currently written using C++11 conforming code,
+LLVM, Clang, and LLD are currently written using C++14 conforming code,
 although we restrict ourselves to features which are available in the major
 toolchains supported as host compilers. The LLDB project is even more
 aggressive in the set of host compilers supported and thus uses still more
 features. Regardless of the supported features, code is expected to (when
-reasonable) be standard, portable, and modern C++11 code. We avoid unnecessary
+reasonable) be standard, portable, and modern C++14 code. We avoid unnecessary
 vendor-specific extensions, etc.
 
 C++ Standard Library
@@ -78,119 +78,22 @@ There are some exceptions such as the standard I/O streams library which are
 avoided. Also, there is much more detailed information on these subjects in the
 :doc:`ProgrammersManual`.
 
-Supported C++11 Language and Library Features
+Supported C++14 Language and Library Features
 ---------------------------------------------
 
-While LLVM, Clang, and LLD use C++11, not all features are available in all of
+While LLVM, Clang, and LLD use C++14, not all features are available in all of
 the toolchains which we support. The set of features supported for use in LLVM
-is the intersection of those supported in MSVC 2013, GCC 4.7, and Clang 3.1.
+is the intersection of those supported in the minimum requirements described
+in the :doc:`GettingStarted` page, section `Software`.
 The ultimate definition of this set is what build bots with those respective
 toolchains accept. Don't argue with the build bots. However, we have some
 guidance below to help you know what to expect.
 
 Each toolchain provides a good reference for what it accepts:
 
-* Clang: http://clang.llvm.org/cxx_status.html
-* GCC: http://gcc.gnu.org/projects/cxx0x.html
-* MSVC: http://msdn.microsoft.com/en-us/library/hh567368.aspx
-
-In most cases, the MSVC list will be the dominating factor. Here is a summary
-of the features that are expected to work. Features not on this list are
-unlikely to be supported by our host compilers.
-
-* Rvalue references: N2118_
-
-  * But *not* Rvalue references for ``*this`` or member qualifiers (N2439_)
-
-* Static assert: N1720_
-* ``auto`` type deduction: N1984_, N1737_
-* Trailing return types: N2541_
-* Lambdas: N2927_
-
-  * But *not* lambdas with default arguments.
-
-* ``decltype``: N2343_
-* Nested closing right angle brackets: N1757_
-* Extern templates: N1987_
-* ``nullptr``: N2431_
-* Strongly-typed and forward declarable enums: N2347_, N2764_
-* Local and unnamed types as template arguments: N2657_
-* Range-based for-loop: N2930_
-
-  * But ``{}`` are required around inner ``do {} while()`` loops.  As a result,
-    ``{}`` are required around function-like macros inside range-based for
-    loops.
-
-* ``override`` and ``final``: N2928_, N3206_, N3272_
-* Atomic operations and the C++11 memory model: N2429_
-* Variadic templates: N2242_
-* Explicit conversion operators: N2437_
-* Defaulted and deleted functions: N2346_
-
-  * But not defaulted move constructors or move assignment operators, MSVC 2013
-    cannot synthesize them.
-* Initializer lists: N2627_
-* Delegating constructors: N1986_
-* Default member initializers (non-static data member initializers): N2756_
-
-  * Only use these for scalar members that would otherwise be left
-    uninitialized. Non-scalar members generally have appropriate default
-    constructors, and MSVC 2013 has problems when braced initializer lists are
-    involved.
-
-.. _N2118: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2006/n2118.html
-.. _N2439: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2007/n2439.htm
-.. _N1720: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2004/n1720.html
-.. _N1984: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2006/n1984.pdf
-.. _N1737: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2004/n1737.pdf
-.. _N2541: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2008/n2541.htm
-.. _N2927: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2009/n2927.pdf
-.. _N2343: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2007/n2343.pdf
-.. _N1757: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2005/n1757.html
-.. _N1987: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2006/n1987.htm
-.. _N2431: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2007/n2431.pdf
-.. _N2347: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2007/n2347.pdf
-.. _N2764: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2008/n2764.pdf
-.. _N2657: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2008/n2657.htm
-.. _N2930: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2009/n2930.html
-.. _N2928: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2009/n2928.htm
-.. _N3206: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2010/n3206.htm
-.. _N3272: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2011/n3272.htm
-.. _N2429: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2007/n2429.htm
-.. _N2242: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2007/n2242.pdf
-.. _N2437: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2007/n2437.pdf
-.. _N2346: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2007/n2346.htm
-.. _N2627: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2008/n2672.htm
-.. _N1986: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2006/n1986.pdf
-.. _N2756: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2008/n2756.htm
-
-The supported features in the C++11 standard libraries are less well tracked,
-but also much greater. Most of the standard libraries implement most of C++11's
-library. The most likely lowest common denominator is Linux support. For
-libc++, the support is just poorly tested and undocumented but expected to be
-largely complete. YMMV. For libstdc++, the support is documented in detail in
-`the libstdc++ manual`_. There are some very minor missing facilities that are
-unlikely to be common problems, and there are a few larger gaps that are worth
-being aware of:
-
-* Not all of the type traits are implemented
-* No regular expression library.
-* While most of the atomics library is well implemented, the fences are
-  missing. Fortunately, they are rarely needed.
-* The locale support is incomplete.
-* ``std::equal()`` (and other algorithms) incorrectly assert in MSVC when given
-  ``nullptr`` as an iterator.
-
-Other than these areas you should assume the standard library is available and
-working as expected until some build bot tells you otherwise. If you're in an
-uncertain area of one of the above points, but you cannot test on a Linux
-system, your best approach is to minimize your use of these features, and watch
-the Linux build bots to find out if your usage triggered a bug. For example, if
-you hit a type trait which doesn't work we can then add support to LLVM's
-traits header to emulate it.
-
-.. _the libstdc++ manual:
-  http://gcc.gnu.org/onlinedocs/gcc-4.7.3/libstdc++/manual/manual/status.html#status.iso.2011
+* Clang: https://clang.llvm.org/cxx_status.html
+* GCC: https://gcc.gnu.org/projects/cxx-status.html#cxx14
+* MSVC: https://msdn.microsoft.com/en-us/library/hh567368.aspx
 
 Other Languages
 ---------------
@@ -209,7 +112,7 @@ this means are `Effective Go`_ and `Go Code Review Comments`_.
   https://golang.org/doc/effective_go.html
 
 .. _Go Code Review Comments:
-  https://code.google.com/p/go-wiki/wiki/CodeReviewComments
+  https://github.com/golang/go/wiki/CodeReviewComments
 
 Mechanical Source Issues
 ========================
@@ -239,10 +142,9 @@ tree.  The standard header looks like this:
 
   //===-- llvm/Instruction.h - Instruction class definition -------*- C++ -*-===//
   //
-  //                     The LLVM Compiler Infrastructure
-  //
-  // This file is distributed under the University of Illinois Open Source
-  // License. See LICENSE.TXT for details.
+  // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+  // See https://llvm.org/LICENSE.txt for license information.
+  // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   //
   //===----------------------------------------------------------------------===//
   ///
@@ -269,7 +171,7 @@ code can be distributed under and should not be modified in any way.
 
 The main body is a ``doxygen`` comment (identified by the ``///`` comment
 marker instead of the usual ``//``) describing the purpose of the file.  The
-first sentence or a passage beginning with ``\brief`` is used as an abstract.
+first sentence (or a passage beginning with ``\brief``) is used as an abstract.
 Any additional information should be separated by a blank line.  If an
 algorithm is being implemented or something tricky is going on, a reference
 to the paper where it is published should be included, as well as any notes or
@@ -311,8 +213,25 @@ useful to use C style (``/* */``) comments however:
 #. When writing a source file that is used by a tool that only accepts C style
    comments.
 
-To comment out a large block of code, use ``#if 0`` and ``#endif``. These nest
-properly and are better behaved in general than C style comments.
+#. When documenting the significance of constants used as actual parameters in
+   a call. This is most helpful for ``bool`` parameters, or passing ``0`` or
+   ``nullptr``. Typically you add the formal parameter name, which ought to be
+   meaningful. For example, it's not clear what the parameter means in this call:
+
+   .. code-block:: c++
+
+     Object.emitName(nullptr);
+
+   An in-line C-style comment makes the intent obvious:
+
+   .. code-block:: c++
+
+     Object.emitName(/*Prefix=*/nullptr);
+
+Commenting out large blocks of code is discouraged, but if you really have to do
+this (for documentation purposes or as a suggestion for debug printing), use
+``#if 0`` and ``#endif``. These nest properly and are better behaved in general
+than C style comments.
 
 Doxygen Use in Documentation Comments
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -322,8 +241,9 @@ comment.
 
 Include descriptive paragraphs for all public interfaces (public classes,
 member and non-member functions).  Don't just restate the information that can
-be inferred from the API name.  The first sentence or a paragraph beginning
-with ``\brief`` is used as an abstract. Put detailed discussion into separate
+be inferred from the API name.  The first sentence (or a paragraph beginning
+with ``\brief``) is used as an abstract. Try to use a single sentence as the
+``\brief`` adds visual clutter.  Put detailed discussion into separate
 paragraphs.
 
 To refer to parameter names inside a paragraph, use the ``\p name`` command.
@@ -351,7 +271,7 @@ A documentation comment that uses all Doxygen features in a preferred way:
 
 .. code-block:: c++
 
-  /// \brief Does foo and bar.
+  /// Does foo and bar.
   ///
   /// Does not do foo the usual way if \p Baz is true.
   ///
@@ -453,7 +373,7 @@ listed.  We prefer these ``#include``\s to be listed in this order:
 
 #. Main Module Header
 #. Local/Private Headers
-#. ``llvm/...``
+#. LLVM project/subproject headers (``clang/...``, ``lldb/...``, ``llvm/...``, etc)
 #. System ``#include``\s
 
 and each category should be sorted lexicographically by the full path.
@@ -465,6 +385,16 @@ header file first in the ``.cpp`` files that implement the interfaces, we ensure
 that the header does not have any hidden dependencies which are not explicitly
 ``#include``\d in the header, but should be. It is also a form of documentation
 in the ``.cpp`` file to indicate where the interfaces it implements are defined.
+
+LLVM project and subproject headers should be grouped from most specific to least
+specific, for the same reasons described above.  For example, LLDB depends on
+both clang and LLVM, and clang depends on LLVM.  So an LLDB source file should
+include ``lldb`` headers first, followed by ``clang`` headers, followed by
+``llvm`` headers, to reduce the possibility (for example) of an LLDB header
+accidentally picking up a missing include due to the previous inclusion of that
+header in the main source file or some earlier header file.  clang should
+similarly include its own headers before including llvm headers.  This rule
+applies to all LLVM subprojects.
 
 .. _fit into 80 columns:
 
@@ -487,8 +417,8 @@ for it (vs something else, like 90 columns).
 This is one of many contentious issues in coding standards, but it is not up for
 debate.
 
-Use Spaces Instead of Tabs
-^^^^^^^^^^^^^^^^^^^^^^^^^^
+Whitespace
+^^^^^^^^^^
 
 In all cases, prefer spaces to tabs in source files.  People have different
 preferred indentation levels, and different styles of indentation that they
@@ -501,6 +431,12 @@ existing code if you are modifying and extending it.  If you like four spaces of
 indentation, **DO NOT** do that in the middle of a chunk of code with two spaces
 of indentation.  Also, do not reindent a whole source file: it makes for
 incredible diffs that are absolutely worthless.
+
+Do not commit changes that include trailing whitespace. If you find trailing
+whitespace in a file, do not remove it unless you're otherwise changing that
+line of code. Some common editors will automatically remove trailing whitespace
+when saving a file which causes unrelated changes to appear in diffs and
+commits.
 
 Indent Code Consistently
 ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -584,7 +520,7 @@ understood for formatting nested function calls. Examples:
 This formatting scheme also makes it particularly easy to get predictable,
 consistent, and automatic formatting with tools like `Clang Format`_.
 
-.. _Clang Format: http://clang.llvm.org/docs/ClangFormat.html
+.. _Clang Format: https://clang.llvm.org/docs/ClangFormat.html
 
 Language and Compiler Issues
 ----------------------------
@@ -660,14 +596,14 @@ Do not use Static Constructors
 Static constructors and destructors (e.g. global variables whose types have a
 constructor or destructor) should not be added to the code base, and should be
 removed wherever possible.  Besides `well known problems
-<http://yosefk.com/c++fqa/ctors.html#fqa-10.12>`_ where the order of
+<https://yosefk.com/c++fqa/ctors.html#fqa-10.12>`_ where the order of
 initialization is undefined between globals in different source files, the
 entire concept of static constructors is at odds with the common use case of
 LLVM as a library linked into a larger application.
   
 Consider the use of LLVM as a JIT linked into another application (perhaps for
-`OpenGL, custom languages <http://llvm.org/Users.html>`_, `shaders in movies
-<http://llvm.org/devmtg/2010-11/Gritz-OpenShadingLang.pdf>`_, etc). Due to the
+`OpenGL, custom languages <https://llvm.org/Users.html>`_, `shaders in movies
+<https://llvm.org/devmtg/2010-11/Gritz-OpenShadingLang.pdf>`_, etc). Due to the
 design of static constructors, they must be executed at startup time of the
 entire application, regardless of whether or how LLVM is used in that larger
 application.  There are two problems with this:
@@ -685,7 +621,7 @@ target or other library into an application, but static constructors violate
 this goal.
   
 That said, LLVM unfortunately does contain static constructors.  It would be a
-`great project <http://llvm.org/PR11944>`_ for someone to purge all static
+`great project <https://llvm.org/PR11944>`_ for someone to purge all static
 constructors from LLVM, and then enable the ``-Wglobal-constructors`` warning
 flag (when building with Clang) to ensure we do not regress in the future.
 
@@ -781,6 +717,9 @@ type is already obvious from the context. Another time when ``auto`` works well
 for these purposes is when the type would have been abstracted away anyways,
 often behind a container's typedef such as ``std::vector<T>::iterator``.
 
+Similarly, C++14 adds generic lambda expressions where parameter types can be
+``auto``. Use these where you would have used a template.
+
 Beware unnecessary copies with ``auto``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -804,33 +743,86 @@ As a rule of thumb, use ``auto &`` unless you need to copy the result, and use
   for (const auto *Ptr : Container) { observe(*Ptr); }
   for (auto *Ptr : Container) { Ptr->change(); }
 
+Beware of non-determinism due to ordering of pointers
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+In general, there is no relative ordering among pointers. As a result,
+when unordered containers like sets and maps are used with pointer keys
+the iteration order is undefined. Hence, iterating such containers may
+result in non-deterministic code generation. While the generated code
+might not necessarily be "wrong code", this non-determinism might result
+in unexpected runtime crashes or simply hard to reproduce bugs on the
+customer side making it harder to debug and fix.
+
+As a rule of thumb, in case an ordered result is expected, remember to
+sort an unordered container before iteration. Or use ordered containers
+like vector/MapVector/SetVector if you want to iterate pointer keys.
+
+Beware of non-deterministic sorting order of equal elements
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+std::sort uses a non-stable sorting algorithm in which the order of equal
+elements is not guaranteed to be preserved. Thus using std::sort for a
+container having equal elements may result in non-determinstic behavior.
+To uncover such instances of non-determinism, LLVM has introduced a new
+llvm::sort wrapper function. For an EXPENSIVE_CHECKS build this will randomly
+shuffle the container before sorting. As a rule of thumb, always make sure to
+use llvm::sort instead of std::sort.
+
 Style Issues
 ============
 
 The High-Level Issues
 ---------------------
 
-A Public Header File **is** a Module
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Self-contained Headers
+^^^^^^^^^^^^^^^^^^^^^^
 
-C++ doesn't do too well in the modularity department.  There is no real
-encapsulation or data hiding (unless you use expensive protocol classes), but it
-is what we have to work with.  When you write a public header file (in the LLVM
-source tree, they live in the top level "``include``" directory), you are
-defining a module of functionality.
+Header files should be self-contained (compile on their own) and end in .h.
+Non-header files that are meant for inclusion should end in .inc and be used
+sparingly.
 
-Ideally, modules should be completely independent of each other, and their
-header files should only ``#include`` the absolute minimum number of headers
-possible. A module is not just a class, a function, or a namespace: it's a
-collection of these that defines an interface.  This interface may be several
-functions, classes, or data structures, but the important issue is how they work
-together.
+All header files should be self-contained. Users and refactoring tools should
+not have to adhere to special conditions to include the header. Specifically, a
+header should have header guards and include all other headers it needs.
 
-In general, a module should be implemented by one or more ``.cpp`` files.  Each
+There are rare cases where a file designed to be included is not
+self-contained. These are typically intended to be included at unusual
+locations, such as the middle of another file. They might not use header
+guards, and might not include their prerequisites. Name such files with the
+.inc extension. Use sparingly, and prefer self-contained headers when possible.
+
+In general, a header should be implemented by one or more ``.cpp`` files.  Each
 of these ``.cpp`` files should include the header that defines their interface
-first.  This ensures that all of the dependences of the module header have been
-properly added to the module header itself, and are not implicit.  System
-headers should be included after user headers for a translation unit.
+first.  This ensures that all of the dependences of the header have been
+properly added to the header itself, and are not implicit.  System headers
+should be included after user headers for a translation unit.
+
+Library Layering
+^^^^^^^^^^^^^^^^
+
+A directory of header files (for example ``include/llvm/Foo``) defines a
+library (``Foo``). Dependencies between libraries are defined by the
+``LLVMBuild.txt`` file in their implementation (``lib/Foo``). One library (both
+its headers and implementation) should only use things from the libraries
+listed in its dependencies.
+
+Some of this constraint can be enforced by classic Unix linkers (Mac & Windows
+linkers, as well as lld, do not enforce this constraint). A Unix linker
+searches left to right through the libraries specified on its command line and
+never revisits a library. In this way, no circular dependencies between
+libraries can exist.
+
+This doesn't fully enforce all inter-library dependencies, and importantly
+doesn't enforce header file circular dependencies created by inline functions.
+A good way to answer the "is this layered correctly" would be to consider
+whether a Unix linker would succeed at linking the program if all inline
+functions were defined out-of-line. (& for all valid orderings of dependencies
+- since linking resolution is linear, it's possible that some implicit
+dependencies can sneak through: A depends on B and C, so valid orderings are
+"C B A" or "B C A", in both cases the explicit dependencies come before their
+use. But in the first case, B could still link successfully if it implicitly
+depended on C, or the opposite in the second case)
 
 .. _minimal list of #includes:
 
@@ -889,7 +881,7 @@ exit from a function, consider this "bad" code:
 .. code-block:: c++
 
   Value *doSomething(Instruction *I) {
-    if (!isa<TerminatorInst>(I) &&
+    if (!I->isTerminator() &&
         I->hasOneUse() && doOtherThing(I)) {
       ... some long code ....
     }
@@ -914,7 +906,7 @@ It is much preferred to format the code like this:
 
   Value *doSomething(Instruction *I) {
     // Terminators never need 'something' done to them because ... 
-    if (isa<TerminatorInst>(I))
+    if (I->isTerminator())
       return 0;
 
     // We conservatively avoid transforming instructions with multiple uses
@@ -934,8 +926,8 @@ loops.  A silly example is something like this:
 
 .. code-block:: c++
 
-  for (BasicBlock::iterator II = BB->begin(), E = BB->end(); II != E; ++II) {
-    if (BinaryOperator *BO = dyn_cast<BinaryOperator>(II)) {
+  for (Instruction &I : BB) {
+    if (auto *BO = dyn_cast<BinaryOperator>(&I)) {
       Value *LHS = BO->getOperand(0);
       Value *RHS = BO->getOperand(1);
       if (LHS != RHS) {
@@ -954,8 +946,8 @@ It is strongly preferred to structure the loop like this:
 
 .. code-block:: c++
 
-  for (BasicBlock::iterator II = BB->begin(), E = BB->end(); II != E; ++II) {
-    BinaryOperator *BO = dyn_cast<BinaryOperator>(II);
+  for (Instruction &I : BB) {
+    auto *BO = dyn_cast<BinaryOperator>(&I);
     if (!BO) continue;
 
     Value *LHS = BO->getOperand(0);
@@ -1158,7 +1150,7 @@ Here are some examples of good and bad names:
                                 // kind of factories.
   };
 
-  Vehicle MakeVehicle(VehicleType Type) {
+  Vehicle makeVehicle(VehicleType Type) {
     VehicleMaker M;                         // Might be OK if having a short life-span.
     Tire Tmp1 = M.makeTire();               // Bad -- 'Tmp1' provides no information.
     Light Headlight = M.makeLight("head");  // Good -- descriptive.
@@ -1224,6 +1216,12 @@ and then exit the program. When assertions are disabled (i.e. in release
 builds), ``llvm_unreachable`` becomes a hint to compilers to skip generating
 code for this branch. If the compiler does not support this, it will fall back
 to the "abort" implementation.
+
+Neither assertions or ``llvm_unreachable`` will abort the program on a release
+build. If the error condition can be triggered by user input then the
+recoverable error mechanism described in :doc:`ProgrammersManual` should be
+used instead. In cases where this is not practical, ``report_fatal_error`` may
+be used.
 
 Another issue is that values used only by assertions will produce an "unused
 value" warning when assertions are disabled.  For example, this code will warn:
@@ -1309,19 +1307,31 @@ that the enum expression may take any representable value, not just those of
 individual enumerators. To suppress this warning, use ``llvm_unreachable`` after
 the switch.
 
-Don't evaluate ``end()`` every time through a loop
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Use range-based ``for`` loops wherever possible
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Because C++ doesn't have a standard "``foreach``" loop (though it can be
-emulated with macros and may be coming in C++'0x) we end up writing a lot of
-loops that manually iterate from begin to end on a variety of containers or
-through other data structures.  One common mistake is to write a loop in this
-style:
+The introduction of range-based ``for`` loops in C++11 means that explicit
+manipulation of iterators is rarely necessary. We use range-based ``for``
+loops wherever possible for all newly added code. For example:
 
 .. code-block:: c++
 
   BasicBlock *BB = ...
-  for (BasicBlock::iterator I = BB->begin(); I != BB->end(); ++I)
+  for (Instruction &I : *BB)
+    ... use I ...
+
+Don't evaluate ``end()`` every time through a loop
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+In cases where range-based ``for`` loops can't be used and it is necessary
+to write an explicit iterator-based loop, pay close attention to whether
+``end()`` is re-evaluted on each loop iteration. One common mistake is to
+write a loop in this style:
+
+.. code-block:: c++
+
+  BasicBlock *BB = ...
+  for (auto I = BB->begin(); I != BB->end(); ++I)
     ... use I ...
 
 The problem with this construct is that it evaluates "``BB->end()``" every time
@@ -1332,7 +1342,7 @@ convenient way to do this is like so:
 .. code-block:: c++
 
   BasicBlock *BB = ...
-  for (BasicBlock::iterator I = BB->begin(), E = BB->end(); I != E; ++I)
+  for (auto I = BB->begin(), E = BB->end(); I != E; ++I)
     ... use I ...
 
 The observant may quickly point out that these two loops may have different
@@ -1619,12 +1629,12 @@ A lot of these comments and recommendations have been culled from other sources.
 Two particularly important books for our work are:
 
 #. `Effective C++
-   <http://www.amazon.com/Effective-Specific-Addison-Wesley-Professional-Computing/dp/0321334876>`_
+   <https://www.amazon.com/Effective-Specific-Addison-Wesley-Professional-Computing/dp/0321334876>`_
    by Scott Meyers.  Also interesting and useful are "More Effective C++" and
    "Effective STL" by the same author.
 
 #. `Large-Scale C++ Software Design
-   <http://www.amazon.com/Large-Scale-Software-Design-John-Lakos/dp/0201633620/ref=sr_1_1>`_
+   <https://www.amazon.com/Large-Scale-Software-Design-John-Lakos/dp/0201633620>`_
    by John Lakos
 
 If you get some free time, and you haven't read them: do so, you might learn

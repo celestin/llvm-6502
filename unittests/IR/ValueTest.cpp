@@ -1,18 +1,17 @@
 //===- llvm/unittest/IR/ValueTest.cpp - Value unit tests ------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/IR/Value.h"
 #include "llvm/AsmParser/Parser.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/ModuleSlotTracker.h"
-#include "llvm/IR/Value.h"
 #include "llvm/Support/SourceMgr.h"
 #include "gtest/gtest.h"
 using namespace llvm;
@@ -39,13 +38,13 @@ TEST(ValueTest, UsedInBasicBlock) {
 
   Function *F = M->getFunction("f");
 
-  EXPECT_FALSE(F->isUsedInBasicBlock(F->begin()));
-  EXPECT_TRUE((++F->arg_begin())->isUsedInBasicBlock(F->begin()));
-  EXPECT_TRUE(F->arg_begin()->isUsedInBasicBlock(F->begin()));
+  EXPECT_FALSE(F->isUsedInBasicBlock(&F->front()));
+  EXPECT_TRUE(std::next(F->arg_begin())->isUsedInBasicBlock(&F->front()));
+  EXPECT_TRUE(F->arg_begin()->isUsedInBasicBlock(&F->front()));
 }
 
 TEST(GlobalTest, CreateAddressSpace) {
-  LLVMContext &Ctx = getGlobalContext();
+  LLVMContext Ctx;
   std::unique_ptr<Module> M(new Module("TestModule", Ctx));
   Type *Int8Ty = Type::getInt8Ty(Ctx);
   Type *Int32Ty = Type::getInt32Ty(Ctx);
@@ -62,7 +61,7 @@ TEST(GlobalTest, CreateAddressSpace) {
                          1);
 
   EXPECT_TRUE(Value::MaximumAlignment == 536870912U);
-  Dummy0->setAlignment(536870912U);
+  Dummy0->setAlignment(Align(536870912));
   EXPECT_EQ(Dummy0->getAlignment(), 536870912U);
 
   // Make sure the address space isn't dropped when returning this.
@@ -91,8 +90,9 @@ TEST(GlobalTest, CreateAddressSpace) {
 
 #ifdef GTEST_HAS_DEATH_TEST
 #ifndef NDEBUG
+
 TEST(GlobalTest, AlignDeath) {
-  LLVMContext &Ctx = getGlobalContext();
+  LLVMContext Ctx;
   std::unique_ptr<Module> M(new Module("TestModule", Ctx));
   Type *Int32Ty = Type::getInt32Ty(Ctx);
   GlobalVariable *Var =
@@ -100,8 +100,7 @@ TEST(GlobalTest, AlignDeath) {
                          Constant::getAllOnesValue(Int32Ty), "var", nullptr,
                          GlobalVariable::NotThreadLocal, 1);
 
-  EXPECT_DEATH(Var->setAlignment(536870913U), "Alignment is not a power of 2");
-  EXPECT_DEATH(Var->setAlignment(1073741824U),
+  EXPECT_DEATH(Var->setAlignment(Align(1073741824U)),
                "Alignment is greater than MaximumAlignment");
 }
 #endif
@@ -112,7 +111,13 @@ TEST(ValueTest, printSlots) {
   // without a slot tracker.
   LLVMContext C;
 
-  const char *ModuleString = "define void @f(i32 %x, i32 %y) {\n"
+  const char *ModuleString = "@g0 = external global %500\n"
+                             "@g1 = external global %900\n"
+                             "\n"
+                             "%900 = type { i32, i32 }\n"
+                             "%500 = type { i32 }\n"
+                             "\n"
+                             "define void @f(i32 %x, i32 %y) {\n"
                              "entry:\n"
                              "  %0 = add i32 %y, 1\n"
                              "  %1 = add i32 %y, 1\n"
@@ -127,10 +132,15 @@ TEST(ValueTest, printSlots) {
   BasicBlock &BB = F->getEntryBlock();
   ASSERT_EQ(3u, BB.size());
 
-  Instruction *I0 = BB.begin();
+  Instruction *I0 = &*BB.begin();
   ASSERT_TRUE(I0);
-  Instruction *I1 = ++BB.begin();
+  Instruction *I1 = &*++BB.begin();
   ASSERT_TRUE(I1);
+
+  GlobalVariable *G0 = M->getGlobalVariable("g0");
+  ASSERT_TRUE(G0);
+  GlobalVariable *G1 = M->getGlobalVariable("g1");
+  ASSERT_TRUE(G1);
 
   ModuleSlotTracker MST(M.get());
 
@@ -172,6 +182,8 @@ TEST(ValueTest, printSlots) {
   CHECK_PRINT_AS_OPERAND(I1, false, "%1");
   CHECK_PRINT_AS_OPERAND(I0, true, "i32 %0");
   CHECK_PRINT_AS_OPERAND(I1, true, "i32 %1");
+  CHECK_PRINT_AS_OPERAND(G0, true, "%0* @g0");
+  CHECK_PRINT_AS_OPERAND(G1, true, "%1* @g1");
 #undef CHECK_PRINT_AS_OPERAND
 }
 
@@ -194,12 +206,12 @@ TEST(ValueTest, getLocalSlots) {
   ASSERT_FALSE(F->empty());
   BasicBlock &EntryBB = F->getEntryBlock();
   ASSERT_EQ(3u, EntryBB.size());
-  BasicBlock *BB2 = ++F->begin();
+  BasicBlock *BB2 = &*++F->begin();
   ASSERT_TRUE(BB2);
 
-  Instruction *I0 = EntryBB.begin();
+  Instruction *I0 = &*EntryBB.begin();
   ASSERT_TRUE(I0);
-  Instruction *I1 = ++EntryBB.begin();
+  Instruction *I1 = &*++EntryBB.begin();
   ASSERT_TRUE(I1);
 
   ModuleSlotTracker MST(M.get());
@@ -227,7 +239,7 @@ TEST(ValueTest, getLocalSlotDeath) {
   Function *F = M->getFunction("f");
   ASSERT_TRUE(F);
   ASSERT_FALSE(F->empty());
-  BasicBlock *BB2 = ++F->begin();
+  BasicBlock *BB2 = &*++F->begin();
   ASSERT_TRUE(BB2);
 
   ModuleSlotTracker MST(M.get());

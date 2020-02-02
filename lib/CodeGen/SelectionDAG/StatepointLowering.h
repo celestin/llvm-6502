@@ -1,9 +1,8 @@
-//===-- StatepointLowering.h - SDAGBuilder's statepoint code -*- C++ -*---===//
+//===- StatepointLowering.h - SDAGBuilder's statepoint code ---*- C++ -*---===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -16,11 +15,16 @@
 #define LLVM_LIB_CODEGEN_SELECTIONDAG_STATEPOINTLOWERING_H
 
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/CodeGen/SelectionDAG.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallBitVector.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/CodeGen/SelectionDAGNodes.h"
-#include <vector>
+#include "llvm/CodeGen/ValueTypes.h"
+#include <cassert>
 
 namespace llvm {
+
+class CallInst;
 class SelectionDAGBuilder;
 
 /// This class tracks both per-statepoint and per-selectiondag information.
@@ -30,7 +34,7 @@ class SelectionDAGBuilder;
 /// works in concert with information in FunctionLoweringInfo.
 class StatepointLoweringState {
 public:
-  StatepointLoweringState() : NextSlotToAllocate(0) {}
+  StatepointLoweringState() = default;
 
   /// Reset all state tracking for a newly encountered safepoint.  Also
   /// performs some consistency checking.
@@ -45,33 +49,39 @@ public:
   /// statepoint.  Will return SDValue() if this value hasn't been
   /// spilled.  Otherwise, the value has already been spilled and no
   /// further action is required by the caller.
-  SDValue getLocation(SDValue val) {
-    if (!Locations.count(val))
+  SDValue getLocation(SDValue Val) {
+    auto I = Locations.find(Val);
+    if (I == Locations.end())
       return SDValue();
-    return Locations[val];
+    return I->second;
   }
-  void setLocation(SDValue val, SDValue Location) {
-    assert(!Locations.count(val) &&
+
+  void setLocation(SDValue Val, SDValue Location) {
+    assert(!Locations.count(Val) &&
            "Trying to allocate already allocated location");
-    Locations[val] = Location;
+    Locations[Val] = Location;
   }
 
   /// Record the fact that we expect to encounter a given gc_relocate
   /// before the next statepoint.  If we don't see it, we'll report
   /// an assertion.
   void scheduleRelocCall(const CallInst &RelocCall) {
-    PendingGCRelocateCalls.push_back(&RelocCall);
+    // We are not interested in lowering dead instructions.
+    if (!RelocCall.use_empty())
+      PendingGCRelocateCalls.push_back(&RelocCall);
   }
+
   /// Remove this gc_relocate from the list we're expecting to see
   /// before the next statepoint.  If we weren't expecting to see
   /// it, we'll report an assertion.
   void relocCallVisited(const CallInst &RelocCall) {
-    SmallVectorImpl<const CallInst *>::iterator itr =
-        std::find(PendingGCRelocateCalls.begin(), PendingGCRelocateCalls.end(),
-                  &RelocCall);
-    assert(itr != PendingGCRelocateCalls.end() &&
+    // We are not interested in lowering dead instructions.
+    if (RelocCall.use_empty())
+      return;
+    auto I = llvm::find(PendingGCRelocateCalls, &RelocCall);
+    assert(I != PendingGCRelocateCalls.end() &&
            "Visited unexpected gcrelocate call");
-    PendingGCRelocateCalls.erase(itr);
+    PendingGCRelocateCalls.erase(I);
   }
 
   // TODO: Should add consistency tracking to ensure we encounter
@@ -84,14 +94,15 @@ public:
   void reserveStackSlot(int Offset) {
     assert(Offset >= 0 && Offset < (int)AllocatedStackSlots.size() &&
            "out of bounds");
-    assert(!AllocatedStackSlots[Offset] && "already reserved!");
+    assert(!AllocatedStackSlots.test(Offset) && "already reserved!");
     assert(NextSlotToAllocate <= (unsigned)Offset && "consistency!");
-    AllocatedStackSlots[Offset] = true;
+    AllocatedStackSlots.set(Offset);
   }
+
   bool isStackSlotAllocated(int Offset) {
     assert(Offset >= 0 && Offset < (int)AllocatedStackSlots.size() &&
            "out of bounds");
-    return AllocatedStackSlots[Offset];
+    return AllocatedStackSlots.test(Offset);
   }
 
 private:
@@ -103,14 +114,15 @@ private:
   /// whether it has been used in the current statepoint.  Since we try to
   /// preserve stack slots across safepoints, there can be gaps in which
   /// slots have been allocated.
-  SmallVector<bool, 50> AllocatedStackSlots;
+  SmallBitVector AllocatedStackSlots;
 
   /// Points just beyond the last slot known to have been allocated
-  unsigned NextSlotToAllocate;
+  unsigned NextSlotToAllocate = 0;
 
   /// Keep track of pending gcrelocate calls for consistency check
   SmallVector<const CallInst *, 10> PendingGCRelocateCalls;
 };
+
 } // end namespace llvm
 
 #endif // LLVM_LIB_CODEGEN_SELECTIONDAG_STATEPOINTLOWERING_H

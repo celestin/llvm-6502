@@ -2,7 +2,7 @@
 
 
 ; CHECK: test1
-; CHECK: movi d[[REG0:[0-9]+]], #0000000000000000
+; CHECK: movi.16b v[[REG0:[0-9]+]], #0
 define <8 x i1> @test1() {
 entry:
   %Shuff = shufflevector <8 x i1> <i1 0, i1 1, i1 2, i1 3, i1 4, i1 5, i1 6,
@@ -36,7 +36,7 @@ bb:
 }
 
 ; CHECK: test3
-; CHECK: movi.4s v{{[0-9]+}}, #0x1
+; CHECK: movi.4s v{{[0-9]+}}, #1
 define <16 x i1> @test3(i1* %ptr, i32 %v) {
 bb:
   %Shuff = shufflevector <16 x i1> <i1 0, i1 1, i1 1, i1 0, i1 0, i1 1, i1 0, i1 0, i1 0, i1 1, i1 1, i1 0, i1 0, i1 1, i1 0, i1 0>, <16 x i1> undef,

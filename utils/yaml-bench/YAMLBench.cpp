@@ -1,9 +1,8 @@
 //===- YAMLBench - Benchmark the YAMLParser implementation ----------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -68,7 +67,7 @@ static raw_ostream &operator <<(raw_ostream &os, const indent &in) {
   return os;
 }
 
-/// \brief Pretty print a tag by replacing tag:yaml.org,2002: with !!.
+/// Pretty print a tag by replacing tag:yaml.org,2002: with !!.
 static std::string prettyTag(yaml::Node *N) {
   std::string Tag = N->getVerbatimTag();
   if (StringRef(Tag).startswith("tag:yaml.org,2002:")) {
@@ -143,10 +142,10 @@ static void dumpStream(yaml::Stream &stream) {
   }
 }
 
-static void benchmark( llvm::TimerGroup &Group
-                     , llvm::StringRef Name
-                     , llvm::StringRef JSONText) {
-  llvm::Timer BaseLine((Name + ": Loop").str(), Group);
+static void benchmark(llvm::TimerGroup &Group, llvm::StringRef Name,
+                      llvm::StringRef Description, llvm::StringRef JSONText) {
+  llvm::Timer BaseLine((Name + ".loop").str(), (Description + ": Loop").str(),
+                       Group);
   BaseLine.startTimer();
   char C = 0;
   for (llvm::StringRef::iterator I = JSONText.begin(),
@@ -155,14 +154,16 @@ static void benchmark( llvm::TimerGroup &Group
   BaseLine.stopTimer();
   volatile char DontOptimizeOut = C; (void)DontOptimizeOut;
 
-  llvm::Timer Tokenizing((Name + ": Tokenizing").str(), Group);
+  llvm::Timer Tokenizing((Name + ".tokenizing").str(),
+                         (Description + ": Tokenizing").str(), Group);
   Tokenizing.startTimer();
   {
     yaml::scanTokens(JSONText);
   }
   Tokenizing.stopTimer();
 
-  llvm::Timer Parsing((Name + ": Parsing").str(), Group);
+  llvm::Timer Parsing((Name + ".parsing").str(),
+                      (Description + ": Parsing").str(), Group);
   Parsing.startTimer();
   {
     llvm::SourceMgr SM;
@@ -218,13 +219,15 @@ int main(int argc, char **argv) {
   }
 
   if (Verify) {
-    llvm::TimerGroup Group("YAML parser benchmark");
-    benchmark(Group, "Fast", createJSONText(10, 500));
+    llvm::TimerGroup Group("yaml", "YAML parser benchmark");
+    benchmark(Group, "Fast", "Fast", createJSONText(10, 500));
   } else if (!DumpCanonical && !DumpTokens) {
-    llvm::TimerGroup Group("YAML parser benchmark");
-    benchmark(Group, "Small Values", createJSONText(MemoryLimitMB, 5));
-    benchmark(Group, "Medium Values", createJSONText(MemoryLimitMB, 500));
-    benchmark(Group, "Large Values", createJSONText(MemoryLimitMB, 50000));
+    llvm::TimerGroup Group("yaml", "YAML parser benchmark");
+    benchmark(Group, "Small", "Small Values", createJSONText(MemoryLimitMB, 5));
+    benchmark(Group, "Medium", "Medium Values",
+              createJSONText(MemoryLimitMB, 500));
+    benchmark(Group, "Large", "Large Values",
+              createJSONText(MemoryLimitMB, 50000));
   }
 
   return 0;

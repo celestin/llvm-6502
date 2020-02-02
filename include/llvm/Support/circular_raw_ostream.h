@@ -1,9 +1,8 @@
 //===-- llvm/Support/circular_raw_ostream.h - Buffered streams --*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -17,8 +16,7 @@
 
 #include "llvm/Support/raw_ostream.h"
 
-namespace llvm 
-{
+namespace llvm {
   /// circular_raw_ostream - A raw_ostream which *can* save its data
   /// to a circular buffer, or can pass it through directly to an
   /// underlying stream if specified with a buffer of zero.
@@ -124,6 +122,10 @@ namespace llvm
       delete[] BufferArray;
     }
 
+    bool is_displayed() const override {
+      return TheStream->is_displayed();
+    }
+
     /// setStream - Tell the circular_raw_ostream to output a
     /// different stream.  "Owns" tells circular_raw_ostream whether
     /// it should take responsibility for managing the underlying
@@ -153,6 +155,5 @@ namespace llvm
     }
   };
 } // end llvm namespace
-
 
 #endif

@@ -14,11 +14,11 @@ target datalayout = "e-m:w-p:32:32-i64:64-f80:32-n8:16:32-S32"
 target triple = "i686-pc-win32"
 
 @c = global { i8, [63 x i8] } { i8 42, [63 x i8] zeroinitializer }, align 32
-@llvm.global_ctors = appending global [1 x { i32, void ()* }] [{ i32, void ()* } { i32 1, void ()* @asan.module_ctor }]
-@__asan_gen_ = private constant [7 x i8] c"asan.c\00", align 1
-@__asan_gen_1 = private unnamed_addr constant [2 x i8] c"c\00", align 1
-@0 = internal global [1 x { i32, i32, i32, i32, i32, i32 }] [{ i32, i32, i32, i32, i32, i32 } { i32 ptrtoint ({ i8, [63 x i8] }* @c to i32), i32 1, i32 64, i32 ptrtoint ([2 x i8]* @__asan_gen_1 to i32), i32 ptrtoint ([7 x i8]* @__asan_gen_ to i32), i32 0 }]
-@llvm.global_dtors = appending global [1 x { i32, void ()* }] [{ i32, void ()* } { i32 1, void ()* @asan.module_dtor }]
+@llvm.global_ctors = appending global [1 x { i32, void ()*, i8* }] [{ i32, void ()*, i8* } { i32 1, void ()* @asan.module_ctor, i8* null }]
+@___asan_gen_ = private constant [7 x i8] c"asan.c\00", align 1
+@___asan_gen_1 = private unnamed_addr constant [2 x i8] c"c\00", align 1
+@0 = internal global [1 x { i32, i32, i32, i32, i32, i32 }] [{ i32, i32, i32, i32, i32, i32 } { i32 ptrtoint ({ i8, [63 x i8] }* @c to i32), i32 1, i32 64, i32 ptrtoint ([2 x i8]* @___asan_gen_1 to i32), i32 ptrtoint ([7 x i8]* @___asan_gen_ to i32), i32 0 }]
+@llvm.global_dtors = appending global [1 x { i32, void ()*, i8* }] [{ i32, void ()*, i8* } { i32 1, void ()* @asan.module_dtor, i8* null }]
 
 define internal void @asan.module_ctor() {
   call void @__asan_init_v3()
@@ -45,9 +45,9 @@ define internal void @asan.module_dtor() {
 !llvm.module.flags = !{!3, !4}
 !llvm.ident = !{!5}
 
-!0 = !DICompileUnit(language: DW_LANG_C99, producer: "clang version 3.5.0 ", isOptimized: false, emissionKind: 2, file: !1, enums: !2, retainedTypes: !2, subprograms: !2, globals: !2, imports: !2)
+!0 = distinct !DICompileUnit(language: DW_LANG_C99, producer: "clang version 3.5.0 ", isOptimized: false, emissionKind: LineTablesOnly, file: !1, enums: !2, retainedTypes: !2, globals: !2, imports: !2)
 !1 = !DIFile(filename: "asan.c", directory: "D:\5C")
 !2 = !{}
-!3 = !{i32 2, !"Dwarf Version", i32 4}
+!3 = !{i32 2, !"CodeView", i32 1}
 !4 = !{i32 1, !"Debug Info Version", i32 3}
 !5 = !{!"clang version 3.5.0 "}

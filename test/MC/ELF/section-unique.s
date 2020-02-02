@@ -1,5 +1,5 @@
 // RUN: llvm-mc -triple x86_64-pc-linux-gnu %s -o - | FileCheck %s
-// RUN: llvm-mc -triple x86_64-pc-linux-gnu %s -filetype=obj -o - | llvm-readobj -t | FileCheck %s --check-prefix=OBJ
+// RUN: llvm-mc -triple x86_64-pc-linux-gnu %s -filetype=obj -o - | llvm-readobj --symbols | FileCheck %s --check-prefix=OBJ
 
 	.section	.text,"ax",@progbits,unique, 4294967293
         .globl	f
@@ -26,7 +26,7 @@ g:
 // OBJ:   Binding: Global
 // OBJ:   Type:    None
 // OBJ:   Other:   0
-// OBJ:   Section: .text (0x5)
+// OBJ:   Section: .text (0x3)
 // OBJ: }
 // OBJ: Symbol {
 // OBJ:   Name:    g
@@ -35,5 +35,5 @@ g:
 // OBJ:   Binding: Global
 // OBJ:   Type:    None
 // OBJ:   Other:   0
-// OBJ:   Section: .text (0x6)
+// OBJ:   Section: .text (0x4)
 // OBJ: }

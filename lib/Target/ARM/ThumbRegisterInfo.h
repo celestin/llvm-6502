@@ -1,9 +1,8 @@
 //===- ThumbRegisterInfo.h - Thumb Register Information Impl -*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -17,7 +16,7 @@
 #define LLVM_LIB_TARGET_ARM_THUMB1REGISTERINFO_H
 
 #include "ARMBaseRegisterInfo.h"
-#include "llvm/Target/TargetRegisterInfo.h"
+#include "llvm/CodeGen/TargetRegisterInfo.h"
 
 namespace llvm {
   class ARMSubtarget;
@@ -39,8 +38,9 @@ public:
   /// specified immediate.
   void
   emitLoadConstPool(MachineBasicBlock &MBB, MachineBasicBlock::iterator &MBBI,
-                    DebugLoc dl, unsigned DestReg, unsigned SubIdx, int Val,
-                    ARMCC::CondCodes Pred = ARMCC::AL, unsigned PredReg = 0,
+                    const DebugLoc &dl, unsigned DestReg, unsigned SubIdx,
+                    int Val, ARMCC::CondCodes Pred = ARMCC::AL,
+                    unsigned PredReg = 0,
                     unsigned MIFlags = MachineInstr::NoFlags) const override;
 
   // rewrite MI to access 'Offset' bytes from the FP. Update Offset to be
@@ -51,14 +51,10 @@ public:
                          const ARMBaseInstrInfo &TII) const;
   void resolveFrameIndex(MachineInstr &MI, unsigned BaseReg,
                          int64_t Offset) const override;
-  bool saveScavengerRegister(MachineBasicBlock &MBB,
-                             MachineBasicBlock::iterator I,
-                             MachineBasicBlock::iterator &UseMI,
-                             const TargetRegisterClass *RC,
-                             unsigned Reg) const override;
   void eliminateFrameIndex(MachineBasicBlock::iterator II,
                            int SPAdj, unsigned FIOperandNum,
                            RegScavenger *RS = nullptr) const override;
+  bool useFPForScavengingIndex(const MachineFunction &MF) const override;
 };
 }
 

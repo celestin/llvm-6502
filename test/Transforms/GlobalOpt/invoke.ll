@@ -2,9 +2,9 @@
 ; rdar://11022897
 
 ; Globalopt should be able to evaluate an invoke.
-; CHECK: @tmp = global i32 1
+; CHECK: @tmp = local_unnamed_addr global i32 1
 
-@llvm.global_ctors = appending global [1 x { i32, void ()* }] [{ i32, void ()* } { i32 65535, void ()* @_GLOBAL__I_a }]
+@llvm.global_ctors = appending global [1 x { i32, void ()*, i8* }] [{ i32, void ()*, i8* } { i32 65535, void ()* @_GLOBAL__I_a, i8* null }]
 @tmp = global i32 0
 
 define i32 @one() {

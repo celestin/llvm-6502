@@ -1,4 +1,5 @@
 ; RUN: opt < %s -ipsccp -S | FileCheck %s
+; RUN: opt < %s -enable-debugify -ipsccp -debugify-quiet -disable-output
 
 ;;======================== test1
 
@@ -82,6 +83,10 @@ define internal {i64,i64} @test4a() {
   ret {i64,i64} %b
 }
 
+; CHECK-LABEL: define internal { i64, i64 } @test4a(
+; CHECK-NEXT:   ret { i64, i64 } undef
+; CHECK-NEXT: }
+
 define i64 @test4b() personality i8* bitcast (i32 (...)* @__gxx_personality_v0 to i8*) {
   %a = invoke {i64,i64} @test4a()
           to label %A unwind label %B
@@ -130,7 +135,7 @@ B:
 
 ; CHECK: define i64 @test5b()
 ; CHECK:     A:
-; CHECK-NEXT:  %c = call i64 @test5c({ i64, i64 } %a)
+; CHECK-NEXT:  %c = call i64 @test5c({ i64, i64 } { i64 5, i64 4 })
 ; CHECK-NEXT:  ret i64 5
 
 define internal i64 @test5c({i64,i64} %a) {
@@ -163,8 +168,7 @@ define internal %T @test7a(i32 %A) {
   %mrv1 = insertvalue %T %mrv0, i32 %A, 1
   ret %T %mrv1
 ; CHECK-LABEL: @test7a(
-; CHECK-NEXT: %mrv0 = insertvalue %T undef, i32 18, 0
-; CHECK-NEXT: %mrv1 = insertvalue %T %mrv0, i32 17, 1
+; CHECK-NEXT: ret %T undef
 }
 
 define i32 @test7b() {
@@ -208,6 +212,12 @@ entry:
         ret void
 }
 
+; CHECK-LABEL: define void @test9(
+; CHECK-NEXT: entry:
+; CHECK-NEXT: %local_foo = alloca {}
+; CHECK-NEXT:  store {} zeroinitializer, {}* %local_foo
+; CHECK-NEXT: ret void
+
 declare i32 @__gxx_personality_v0(...)
 
 ;;======================== test10
@@ -237,13 +247,27 @@ define i64 @test11a() {
 ; CHECK: ret i64 0
 }
 
-define void @test11b() {
+define i64 @test11b() {
   %call1 = call i64 @test11a()
   %call2 = call i64 @llvm.ctpop.i64(i64 %call1)
-  ret void
-; CHECK-LABEL: define void @test11b
+  ret i64 %call2
+; CHECK-LABEL: define i64 @test11b
 ; CHECK: %[[call1:.*]] = call i64 @test11a()
-; CHECK: %[[call2:.*]] = call i64 @llvm.ctpop.i64(i64 0)
+; CHECK-NOT: call i64 @llvm.ctpop.i64
+; CHECK-NEXT: ret i64 0
 }
 
 declare i64 @llvm.ctpop.i64(i64)
+
+;;======================== test12
+;; Ensure that a struct as an arg to a potentially constant-foldable
+;; function does not crash SCCP (for now it'll just ignores it)
+
+define i1 @test12() {
+  %c = call i1 @llvm.is.constant.sl_i32i32s({i32, i32} {i32 -1, i32 32})
+  ret i1 %c
+; CHECK-LABEL: define i1 @test12
+; CHECK: ret i1 %c
+}
+
+declare i1 @llvm.is.constant.sl_i32i32s({i32, i32} %a)

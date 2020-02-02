@@ -1,9 +1,8 @@
 //===- llvm/Support/Host.h - Host machine characteristics --------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -16,26 +15,10 @@
 
 #include "llvm/ADT/StringMap.h"
 
-#if defined(__linux__) || defined(__GNU__)
-#include <endian.h>
-#else
-#if !defined(BYTE_ORDER) && !defined(LLVM_ON_WIN32)
-#include <machine/endian.h>
-#endif
-#endif
-
 #include <string>
 
 namespace llvm {
 namespace sys {
-
-#if defined(BYTE_ORDER) && defined(BIG_ENDIAN) && BYTE_ORDER == BIG_ENDIAN
-  static const bool IsBigEndianHost = true;
-#else
-  static const bool IsBigEndianHost = false;
-#endif
-
-  static const bool IsLittleEndianHost = !IsBigEndianHost;
 
   /// getDefaultTargetTriple() - Return the default target triple the compiler
   /// has been configured to produce code for.
@@ -68,6 +51,19 @@ namespace sys {
   ///
   /// \return - True on success.
   bool getHostCPUFeatures(StringMap<bool> &Features);
+
+  /// Get the number of physical cores (as opposed to logical cores returned
+  /// from thread::hardware_concurrency(), which includes hyperthreads).
+  /// Returns -1 if unknown for the current host system.
+  int getHostNumPhysicalCores();
+
+  namespace detail {
+  /// Helper functions to extract HostCPUName from /proc/cpuinfo on linux.
+  StringRef getHostCPUNameForPowerPC(StringRef ProcCpuinfoContent);
+  StringRef getHostCPUNameForARM(StringRef ProcCpuinfoContent);
+  StringRef getHostCPUNameForS390x(StringRef ProcCpuinfoContent);
+  StringRef getHostCPUNameForBPF();
+  }
 }
 }
 

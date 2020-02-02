@@ -1,10 +1,9 @@
 //===----------------------- AlignmentFromAssumptions.cpp -----------------===//
 //                  Set Load/Store Alignments From Assumptions
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -18,22 +17,23 @@
 
 #define AA_NAME "alignment-from-assumptions"
 #define DEBUG_TYPE AA_NAME
-#include "llvm/Transforms/Scalar.h"
+#include "llvm/Transforms/Scalar/AlignmentFromAssumptions.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/Statistic.h"
+#include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/Analysis/AssumptionCache.h"
+#include "llvm/Analysis/GlobalsModRef.h"
 #include "llvm/Analysis/LoopInfo.h"
-#include "llvm/Analysis/ScalarEvolution.h"
 #include "llvm/Analysis/ScalarEvolutionExpressions.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/Constant.h"
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/Instruction.h"
-#include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Transforms/Scalar.h"
 using namespace llvm;
 
 STATISTIC(NumLoadAlignChanged,
@@ -54,27 +54,18 @@ struct AlignmentFromAssumptions : public FunctionPass {
 
   void getAnalysisUsage(AnalysisUsage &AU) const override {
     AU.addRequired<AssumptionCacheTracker>();
-    AU.addRequired<ScalarEvolution>();
+    AU.addRequired<ScalarEvolutionWrapperPass>();
     AU.addRequired<DominatorTreeWrapperPass>();
 
     AU.setPreservesCFG();
+    AU.addPreserved<AAResultsWrapperPass>();
+    AU.addPreserved<GlobalsAAWrapperPass>();
     AU.addPreserved<LoopInfoWrapperPass>();
     AU.addPreserved<DominatorTreeWrapperPass>();
-    AU.addPreserved<ScalarEvolution>();
+    AU.addPreserved<ScalarEvolutionWrapperPass>();
   }
 
-  // For memory transfers, we need a common alignment for both the source and
-  // destination. If we have a new alignment for only one operand of a transfer
-  // instruction, save it in these maps.  If we reach the other operand through
-  // another assumption later, then we may change the alignment at that point.
-  DenseMap<MemTransferInst *, unsigned> NewDestAlignments, NewSrcAlignments;
-
-  ScalarEvolution *SE;
-  DominatorTree *DT;
-
-  bool extractAlignmentInfo(CallInst *I, Value *&AAPtr, const SCEV *&AlignSCEV,
-                            const SCEV *&OffSCEV);
-  bool processAssumption(CallInst *I);
+  AlignmentFromAssumptionsPass Impl;
 };
 }
 
@@ -84,7 +75,7 @@ INITIALIZE_PASS_BEGIN(AlignmentFromAssumptions, AA_NAME,
                       aip_name, false, false)
 INITIALIZE_PASS_DEPENDENCY(AssumptionCacheTracker)
 INITIALIZE_PASS_DEPENDENCY(DominatorTreeWrapperPass)
-INITIALIZE_PASS_DEPENDENCY(ScalarEvolution)
+INITIALIZE_PASS_DEPENDENCY(ScalarEvolutionWrapperPass)
 INITIALIZE_PASS_END(AlignmentFromAssumptions, AA_NAME,
                     aip_name, false, false)
 
@@ -102,12 +93,10 @@ static unsigned getNewAlignmentDiff(const SCEV *DiffSCEV,
                                     const SCEV *AlignSCEV,
                                     ScalarEvolution *SE) {
   // DiffUnits = Diff % int64_t(Alignment)
-  const SCEV *DiffAlignDiv = SE->getUDivExpr(DiffSCEV, AlignSCEV);
-  const SCEV *DiffAlign = SE->getMulExpr(DiffAlignDiv, AlignSCEV);
-  const SCEV *DiffUnitsSCEV = SE->getMinusSCEV(DiffAlign, DiffSCEV);
+  const SCEV *DiffUnitsSCEV = SE->getURemExpr(DiffSCEV, AlignSCEV);
 
-  DEBUG(dbgs() << "\talignment relative to " << *AlignSCEV << " is " <<
-                  *DiffUnitsSCEV << " (diff: " << *DiffSCEV << ")\n");
+  LLVM_DEBUG(dbgs() << "\talignment relative to " << *AlignSCEV << " is "
+                    << *DiffUnitsSCEV << " (diff: " << *DiffSCEV << ")\n");
 
   if (const SCEVConstant *ConstDUSCEV =
       dyn_cast<SCEVConstant>(DiffUnitsSCEV)) {
@@ -147,12 +136,12 @@ static unsigned getNewAlignment(const SCEV *AASCEV, const SCEV *AlignSCEV,
   // address. This address is displaced by the provided offset.
   DiffSCEV = SE->getMinusSCEV(DiffSCEV, OffSCEV);
 
-  DEBUG(dbgs() << "AFI: alignment of " << *Ptr << " relative to " <<
-                  *AlignSCEV << " and offset " << *OffSCEV <<
-                  " using diff " << *DiffSCEV << "\n");
+  LLVM_DEBUG(dbgs() << "AFI: alignment of " << *Ptr << " relative to "
+                    << *AlignSCEV << " and offset " << *OffSCEV
+                    << " using diff " << *DiffSCEV << "\n");
 
   unsigned NewAlignment = getNewAlignmentDiff(DiffSCEV, AlignSCEV, SE);
-  DEBUG(dbgs() << "\tnew alignment: " << NewAlignment << "\n");
+  LLVM_DEBUG(dbgs() << "\tnew alignment: " << NewAlignment << "\n");
 
   if (NewAlignment) {
     return NewAlignment;
@@ -168,8 +157,8 @@ static unsigned getNewAlignment(const SCEV *AASCEV, const SCEV *AlignSCEV,
     const SCEV *DiffStartSCEV = DiffARSCEV->getStart();
     const SCEV *DiffIncSCEV = DiffARSCEV->getStepRecurrence(*SE);
 
-    DEBUG(dbgs() << "\ttrying start/inc alignment using start " <<
-                    *DiffStartSCEV << " and inc " << *DiffIncSCEV << "\n");
+    LLVM_DEBUG(dbgs() << "\ttrying start/inc alignment using start "
+                      << *DiffStartSCEV << " and inc " << *DiffIncSCEV << "\n");
 
     // Now compute the new alignment using the displacement to the value in the
     // first iteration, and also the alignment using the per-iteration delta.
@@ -178,26 +167,26 @@ static unsigned getNewAlignment(const SCEV *AASCEV, const SCEV *AlignSCEV,
     NewAlignment = getNewAlignmentDiff(DiffStartSCEV, AlignSCEV, SE);
     unsigned NewIncAlignment = getNewAlignmentDiff(DiffIncSCEV, AlignSCEV, SE);
 
-    DEBUG(dbgs() << "\tnew start alignment: " << NewAlignment << "\n");
-    DEBUG(dbgs() << "\tnew inc alignment: " << NewIncAlignment << "\n");
+    LLVM_DEBUG(dbgs() << "\tnew start alignment: " << NewAlignment << "\n");
+    LLVM_DEBUG(dbgs() << "\tnew inc alignment: " << NewIncAlignment << "\n");
 
     if (!NewAlignment || !NewIncAlignment) {
       return 0;
     } else if (NewAlignment > NewIncAlignment) {
       if (NewAlignment % NewIncAlignment == 0) {
-        DEBUG(dbgs() << "\tnew start/inc alignment: " <<
-                        NewIncAlignment << "\n");
+        LLVM_DEBUG(dbgs() << "\tnew start/inc alignment: " << NewIncAlignment
+                          << "\n");
         return NewIncAlignment;
       }
     } else if (NewIncAlignment > NewAlignment) {
       if (NewIncAlignment % NewAlignment == 0) {
-        DEBUG(dbgs() << "\tnew start/inc alignment: " <<
-                        NewAlignment << "\n");
+        LLVM_DEBUG(dbgs() << "\tnew start/inc alignment: " << NewAlignment
+                          << "\n");
         return NewAlignment;
       }
     } else if (NewIncAlignment == NewAlignment) {
-      DEBUG(dbgs() << "\tnew start/inc alignment: " <<
-                      NewAlignment << "\n");
+      LLVM_DEBUG(dbgs() << "\tnew start/inc alignment: " << NewAlignment
+                        << "\n");
       return NewAlignment;
     }
   }
@@ -205,9 +194,10 @@ static unsigned getNewAlignment(const SCEV *AASCEV, const SCEV *AlignSCEV,
   return 0;
 }
 
-bool AlignmentFromAssumptions::extractAlignmentInfo(CallInst *I,
-                                 Value *&AAPtr, const SCEV *&AlignSCEV,
-                                 const SCEV *&OffSCEV) {
+bool AlignmentFromAssumptionsPass::extractAlignmentInfo(CallInst *I,
+                                                        Value *&AAPtr,
+                                                        const SCEV *&AlignSCEV,
+                                                        const SCEV *&OffSCEV) {
   // An alignment assume must be a statement about the least-significant
   // bits of the pointer being zero, possibly with some offset.
   ICmpInst *ICI = dyn_cast<ICmpInst>(I->getArgOperand(0));
@@ -249,8 +239,7 @@ bool AlignmentFromAssumptions::extractAlignmentInfo(CallInst *I,
 
   // The mask must have some trailing ones (otherwise the condition is
   // trivial and tells us nothing about the alignment of the left operand).
-  unsigned TrailingOnes =
-    MaskSCEV->getValue()->getValue().countTrailingOnes();
+  unsigned TrailingOnes = MaskSCEV->getAPInt().countTrailingOnes();
   if (!TrailingOnes)
     return false;
 
@@ -270,7 +259,7 @@ bool AlignmentFromAssumptions::extractAlignmentInfo(CallInst *I,
   OffSCEV = nullptr;
   if (PtrToIntInst *PToI = dyn_cast<PtrToIntInst>(AndLHS)) {
     AAPtr = PToI->getPointerOperand();
-    OffSCEV = SE->getConstant(Int64Ty, 0);
+    OffSCEV = SE->getZero(Int64Ty);
   } else if (const SCEVAddExpr* AndLHSAddSCEV =
              dyn_cast<SCEVAddExpr>(AndLHSSCEV)) {
     // Try to find the ptrtoint; subtract it and the rest is the offset.
@@ -288,7 +277,7 @@ bool AlignmentFromAssumptions::extractAlignmentInfo(CallInst *I,
     return false;
 
   // Sign extend the offset to 64 bits (so that it is like all of the other
-  // expressions). 
+  // expressions).
   unsigned OffSCEVBits = OffSCEV->getType()->getPrimitiveSizeInBits();
   if (OffSCEVBits < 64)
     OffSCEV = SE->getSignExtendExpr(OffSCEV, Int64Ty);
@@ -299,10 +288,15 @@ bool AlignmentFromAssumptions::extractAlignmentInfo(CallInst *I,
   return true;
 }
 
-bool AlignmentFromAssumptions::processAssumption(CallInst *ACall) {
+bool AlignmentFromAssumptionsPass::processAssumption(CallInst *ACall) {
   Value *AAPtr;
   const SCEV *AlignSCEV, *OffSCEV;
   if (!extractAlignmentInfo(ACall, AAPtr, AlignSCEV, OffSCEV))
+    return false;
+
+  // Skip ConstantPointerNull and UndefValue.  Assumptions on these shouldn't
+  // affect other users.
+  if (isa<ConstantData>(AAPtr))
     return false;
 
   const SCEV *AASCEV = SE->getSCEV(AAPtr);
@@ -327,7 +321,7 @@ bool AlignmentFromAssumptions::processAssumption(CallInst *ACall) {
         LI->getPointerOperand(), SE);
 
       if (NewAlignment > LI->getAlignment()) {
-        LI->setAlignment(NewAlignment);
+        LI->setAlignment(MaybeAlign(NewAlignment));
         ++NumLoadAlignChanged;
       }
     } else if (StoreInst *SI = dyn_cast<StoreInst>(J)) {
@@ -335,62 +329,31 @@ bool AlignmentFromAssumptions::processAssumption(CallInst *ACall) {
         SI->getPointerOperand(), SE);
 
       if (NewAlignment > SI->getAlignment()) {
-        SI->setAlignment(NewAlignment);
+        SI->setAlignment(MaybeAlign(NewAlignment));
         ++NumStoreAlignChanged;
       }
     } else if (MemIntrinsic *MI = dyn_cast<MemIntrinsic>(J)) {
       unsigned NewDestAlignment = getNewAlignment(AASCEV, AlignSCEV, OffSCEV,
         MI->getDest(), SE);
 
-      // For memory transfers, we need a common alignment for both the
-      // source and destination. If we have a new alignment for this
-      // instruction, but only for one operand, save it. If we reach the
-      // other operand through another assumption later, then we may
-      // change the alignment at that point.
+      LLVM_DEBUG(dbgs() << "\tmem inst: " << NewDestAlignment << "\n";);
+      if (NewDestAlignment > MI->getDestAlignment()) {
+        MI->setDestAlignment(NewDestAlignment);
+        ++NumMemIntAlignChanged;
+      }
+
+      // For memory transfers, there is also a source alignment that
+      // can be set.
       if (MemTransferInst *MTI = dyn_cast<MemTransferInst>(MI)) {
         unsigned NewSrcAlignment = getNewAlignment(AASCEV, AlignSCEV, OffSCEV,
           MTI->getSource(), SE);
 
-        DenseMap<MemTransferInst *, unsigned>::iterator DI =
-          NewDestAlignments.find(MTI);
-        unsigned AltDestAlignment = (DI == NewDestAlignments.end()) ?
-                                    0 : DI->second;
+        LLVM_DEBUG(dbgs() << "\tmem trans: " << NewSrcAlignment << "\n";);
 
-        DenseMap<MemTransferInst *, unsigned>::iterator SI =
-          NewSrcAlignments.find(MTI);
-        unsigned AltSrcAlignment = (SI == NewSrcAlignments.end()) ?
-                                   0 : SI->second;
-
-        DEBUG(dbgs() << "\tmem trans: " << NewDestAlignment << " " <<
-                        AltDestAlignment << " " << NewSrcAlignment <<
-                        " " << AltSrcAlignment << "\n");
-
-        // Of these four alignments, pick the largest possible...
-        unsigned NewAlignment = 0;
-        if (NewDestAlignment <= std::max(NewSrcAlignment, AltSrcAlignment))
-          NewAlignment = std::max(NewAlignment, NewDestAlignment);
-        if (AltDestAlignment <= std::max(NewSrcAlignment, AltSrcAlignment))
-          NewAlignment = std::max(NewAlignment, AltDestAlignment);
-        if (NewSrcAlignment <= std::max(NewDestAlignment, AltDestAlignment))
-          NewAlignment = std::max(NewAlignment, NewSrcAlignment);
-        if (AltSrcAlignment <= std::max(NewDestAlignment, AltDestAlignment))
-          NewAlignment = std::max(NewAlignment, AltSrcAlignment);
-
-        if (NewAlignment > MI->getAlignment()) {
-          MI->setAlignment(ConstantInt::get(Type::getInt32Ty(
-            MI->getParent()->getContext()), NewAlignment));
+        if (NewSrcAlignment > MTI->getSourceAlignment()) {
+          MTI->setSourceAlignment(NewSrcAlignment);
           ++NumMemIntAlignChanged;
         }
-
-        NewDestAlignments.insert(std::make_pair(MTI, NewDestAlignment));
-        NewSrcAlignments.insert(std::make_pair(MTI, NewSrcAlignment));
-      } else if (NewDestAlignment > MI->getAlignment()) {
-        assert((!isa<MemIntrinsic>(MI) || isa<MemSetInst>(MI)) &&
-               "Unknown memory intrinsic");
-
-        MI->setAlignment(ConstantInt::get(Type::getInt32Ty(
-          MI->getParent()->getContext()), NewDestAlignment));
-        ++NumMemIntAlignChanged;
       }
     }
 
@@ -408,14 +371,23 @@ bool AlignmentFromAssumptions::processAssumption(CallInst *ACall) {
 }
 
 bool AlignmentFromAssumptions::runOnFunction(Function &F) {
-  bool Changed = false;
+  if (skipFunction(F))
+    return false;
+
   auto &AC = getAnalysis<AssumptionCacheTracker>().getAssumptionCache(F);
-  SE = &getAnalysis<ScalarEvolution>();
-  DT = &getAnalysis<DominatorTreeWrapperPass>().getDomTree();
+  ScalarEvolution *SE = &getAnalysis<ScalarEvolutionWrapperPass>().getSE();
+  DominatorTree *DT = &getAnalysis<DominatorTreeWrapperPass>().getDomTree();
 
-  NewDestAlignments.clear();
-  NewSrcAlignments.clear();
+  return Impl.runImpl(F, AC, SE, DT);
+}
 
+bool AlignmentFromAssumptionsPass::runImpl(Function &F, AssumptionCache &AC,
+                                           ScalarEvolution *SE_,
+                                           DominatorTree *DT_) {
+  SE = SE_;
+  DT = DT_;
+
+  bool Changed = false;
   for (auto &AssumeVH : AC.assumptions())
     if (AssumeVH)
       Changed |= processAssumption(cast<CallInst>(AssumeVH));
@@ -423,3 +395,19 @@ bool AlignmentFromAssumptions::runOnFunction(Function &F) {
   return Changed;
 }
 
+PreservedAnalyses
+AlignmentFromAssumptionsPass::run(Function &F, FunctionAnalysisManager &AM) {
+
+  AssumptionCache &AC = AM.getResult<AssumptionAnalysis>(F);
+  ScalarEvolution &SE = AM.getResult<ScalarEvolutionAnalysis>(F);
+  DominatorTree &DT = AM.getResult<DominatorTreeAnalysis>(F);
+  if (!runImpl(F, AC, &SE, &DT))
+    return PreservedAnalyses::all();
+
+  PreservedAnalyses PA;
+  PA.preserveSet<CFGAnalyses>();
+  PA.preserve<AAManager>();
+  PA.preserve<ScalarEvolutionAnalysis>();
+  PA.preserve<GlobalsAA>();
+  return PA;
+}

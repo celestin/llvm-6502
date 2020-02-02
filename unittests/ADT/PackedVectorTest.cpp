@@ -1,9 +1,8 @@
 //===- llvm/unittest/ADT/PackedVectorTest.cpp - PackedVector tests --------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -51,18 +50,6 @@ TEST(PackedVectorTest, Operation) {
 
   EXPECT_FALSE(Vec == Vec2);
   EXPECT_TRUE(Vec != Vec2);
-
-  Vec2.swap(Vec);
-  EXPECT_EQ(3U, Vec.size());
-  EXPECT_FALSE(Vec.empty());
-  EXPECT_EQ(0U, Vec[0]);
-  EXPECT_EQ(0U, Vec[1]);
-  EXPECT_EQ(0U, Vec[2]);
-
-  EXPECT_EQ(2U, Vec2[0]);
-  EXPECT_EQ(0U, Vec2[1]);
-  EXPECT_EQ(1U, Vec2[2]);
-  EXPECT_EQ(3U, Vec2[3]);
 
   Vec = Vec2;
   EXPECT_TRUE(Vec == Vec2);

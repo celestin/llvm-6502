@@ -1,4 +1,4 @@
-; RUN: llc  -march=mipsel -mcpu=mips16 -relocation-model=pic -O3 < %s | FileCheck %s -check-prefix=16
+; RUN: llc  -march=mipsel -mattr=mips16 -relocation-model=pic -O3 < %s | FileCheck %s -check-prefix=16
 
 @i = global i64 4294967295, align 8
 @j = global i64 15, align 8
@@ -14,9 +14,9 @@ entry:
   %add = add nsw i64 %1, %0
   store i64 %add, i64* @k, align 8
 ; 16:	addu	${{[0-9]+}}, ${{[0-9]+}}, ${{[0-9]+}}
-; 16:	sltu	${{[0-9]+}}, ${{[0-9]+}}
-; 16:	move	${{[0-9]+}}, $t8
 ; 16:	addu	${{[0-9]+}}, ${{[0-9]+}}, ${{[0-9]+}}
+; 16:	sltu	${{[0-9]+}}, ${{[0-9]+}}
+; 16:	move	${{[0-9]+}}, $24
 ; 16:	addu	${{[0-9]+}}, ${{[0-9]+}}, ${{[0-9]+}}
   ret void
 }
@@ -28,8 +28,8 @@ entry:
   %sub = sub nsw i64 %0, %1
 ; 16:	subu	${{[0-9]+}}, ${{[0-9]+}}, ${{[0-9]+}}
 ; 16:	sltu	${{[0-9]+}}, ${{[0-9]+}}
-; 16:	move	${{[0-9]+}}, $t8
-; 16:	addu	${{[0-9]+}}, ${{[0-9]+}}, ${{[0-9]+}}
+; 16:	move	${{[0-9]+}}, $24
+; 16:	subu	${{[0-9]+}}, ${{[0-9]+}}, ${{[0-9]+}}
 ; 16:	subu	${{[0-9]+}}, ${{[0-9]+}}, ${{[0-9]+}}
   store i64 %sub, i64* @l, align 8
   ret void
@@ -41,8 +41,7 @@ entry:
   %add = add nsw i64 %0, 15
 ; 16:	addiu	${{[0-9]+}}, 15
 ; 16:	sltu	${{[0-9]+}}, ${{[0-9]+}}
-; 16:	move	${{[0-9]+}}, $t8
-; 16:	addu	${{[0-9]+}}, ${{[0-9]+}}, ${{[0-9]+}}
+; 16:	move	${{[0-9]+}}, $24
 ; 16:	addu	${{[0-9]+}}, ${{[0-9]+}}, ${{[0-9]+}}
   store i64 %add, i64* @m, align 8
   ret void

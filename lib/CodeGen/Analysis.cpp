@@ -1,9 +1,8 @@
 //===-- Analysis.cpp - CodeGen LLVM IR Analysis Utilities -----------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -14,7 +13,9 @@
 #include "llvm/CodeGen/Analysis.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/CodeGen/MachineFunction.h"
-#include "llvm/CodeGen/SelectionDAG.h"
+#include "llvm/CodeGen/TargetInstrInfo.h"
+#include "llvm/CodeGen/TargetLowering.h"
+#include "llvm/CodeGen/TargetSubtargetInfo.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
@@ -24,8 +25,6 @@
 #include "llvm/IR/Module.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MathExtras.h"
-#include "llvm/Target/TargetLowering.h"
-#include "llvm/Target/TargetSubtargetInfo.h"
 #include "llvm/Transforms/Utils/GlobalStatus.h"
 
 using namespace llvm;
@@ -83,6 +82,7 @@ unsigned llvm::ComputeLinearIndex(Type *Ty,
 ///
 void llvm::ComputeValueVTs(const TargetLowering &TLI, const DataLayout &DL,
                            Type *Ty, SmallVectorImpl<EVT> &ValueVTs,
+                           SmallVectorImpl<EVT> *MemVTs,
                            SmallVectorImpl<uint64_t> *Offsets,
                            uint64_t StartingOffset) {
   // Given a struct type, recursively traverse the elements.
@@ -92,7 +92,7 @@ void llvm::ComputeValueVTs(const TargetLowering &TLI, const DataLayout &DL,
                                       EI = EB,
                                       EE = STy->element_end();
          EI != EE; ++EI)
-      ComputeValueVTs(TLI, DL, *EI, ValueVTs, Offsets,
+      ComputeValueVTs(TLI, DL, *EI, ValueVTs, MemVTs, Offsets,
                       StartingOffset + SL->getElementOffset(EI - EB));
     return;
   }
@@ -101,7 +101,7 @@ void llvm::ComputeValueVTs(const TargetLowering &TLI, const DataLayout &DL,
     Type *EltTy = ATy->getElementType();
     uint64_t EltSize = DL.getTypeAllocSize(EltTy);
     for (unsigned i = 0, e = ATy->getNumElements(); i != e; ++i)
-      ComputeValueVTs(TLI, DL, EltTy, ValueVTs, Offsets,
+      ComputeValueVTs(TLI, DL, EltTy, ValueVTs, MemVTs, Offsets,
                       StartingOffset + i * EltSize);
     return;
   }
@@ -110,8 +110,48 @@ void llvm::ComputeValueVTs(const TargetLowering &TLI, const DataLayout &DL,
     return;
   // Base case: we can get an EVT for this LLVM IR type.
   ValueVTs.push_back(TLI.getValueType(DL, Ty));
+  if (MemVTs)
+    MemVTs->push_back(TLI.getMemValueType(DL, Ty));
   if (Offsets)
     Offsets->push_back(StartingOffset);
+}
+
+void llvm::ComputeValueVTs(const TargetLowering &TLI, const DataLayout &DL,
+                           Type *Ty, SmallVectorImpl<EVT> &ValueVTs,
+                           SmallVectorImpl<uint64_t> *Offsets,
+                           uint64_t StartingOffset) {
+  return ComputeValueVTs(TLI, DL, Ty, ValueVTs, /*MemVTs=*/nullptr, Offsets,
+                         StartingOffset);
+}
+
+void llvm::computeValueLLTs(const DataLayout &DL, Type &Ty,
+                            SmallVectorImpl<LLT> &ValueTys,
+                            SmallVectorImpl<uint64_t> *Offsets,
+                            uint64_t StartingOffset) {
+  // Given a struct type, recursively traverse the elements.
+  if (StructType *STy = dyn_cast<StructType>(&Ty)) {
+    const StructLayout *SL = DL.getStructLayout(STy);
+    for (unsigned I = 0, E = STy->getNumElements(); I != E; ++I)
+      computeValueLLTs(DL, *STy->getElementType(I), ValueTys, Offsets,
+                       StartingOffset + SL->getElementOffset(I));
+    return;
+  }
+  // Given an array type, recursively traverse the elements.
+  if (ArrayType *ATy = dyn_cast<ArrayType>(&Ty)) {
+    Type *EltTy = ATy->getElementType();
+    uint64_t EltSize = DL.getTypeAllocSize(EltTy);
+    for (unsigned i = 0, e = ATy->getNumElements(); i != e; ++i)
+      computeValueLLTs(DL, *EltTy, ValueTys, Offsets,
+                       StartingOffset + i * EltSize);
+    return;
+  }
+  // Interpret void as zero return values.
+  if (Ty.isVoidTy())
+    return;
+  // Base case: we can get an LLT for this LLVM IR type.
+  ValueTys.push_back(getLLTForType(Ty, DL));
+  if (Offsets != nullptr)
+    Offsets->push_back(StartingOffset * 8);
 }
 
 /// ExtractTypeInfo - Returns the type info, possibly bitcast, encoded in V.
@@ -269,30 +309,13 @@ static const Value *getNoopInput(const Value *V,
         NoopInput = Op;
     } else if (isa<TruncInst>(I) &&
                TLI.allowTruncateForTailCall(Op->getType(), I->getType())) {
-      DataBits = std::min(DataBits, I->getType()->getPrimitiveSizeInBits());
+      DataBits = std::min((uint64_t)DataBits,
+                         I->getType()->getPrimitiveSizeInBits().getFixedSize());
       NoopInput = Op;
-    } else if (isa<CallInst>(I)) {
-      // Look through call (skipping callee)
-      for (User::const_op_iterator i = I->op_begin(), e = I->op_end() - 1;
-           i != e; ++i) {
-        unsigned attrInd = i - I->op_begin() + 1;
-        if (cast<CallInst>(I)->paramHasAttr(attrInd, Attribute::Returned) &&
-            isNoopBitcast((*i)->getType(), I->getType(), TLI)) {
-          NoopInput = *i;
-          break;
-        }
-      }
-    } else if (isa<InvokeInst>(I)) {
-      // Look through invoke (skipping BB, BB, Callee)
-      for (User::const_op_iterator i = I->op_begin(), e = I->op_end() - 3;
-           i != e; ++i) {
-        unsigned attrInd = i - I->op_begin() + 1;
-        if (cast<InvokeInst>(I)->paramHasAttr(attrInd, Attribute::Returned) &&
-            isNoopBitcast((*i)->getType(), I->getType(), TLI)) {
-          NoopInput = *i;
-          break;
-        }
-      }
+    } else if (auto CS = ImmutableCallSite(I)) {
+      const Value *ReturnedOp = CS.getReturnedArgOperand();
+      if (ReturnedOp && isNoopBitcast(ReturnedOp->getType(), I->getType(), TLI))
+        NoopInput = ReturnedOp;
     } else if (const InsertValueInst *IVI = dyn_cast<InsertValueInst>(V)) {
       // Value may come from either the aggregate or the scalar
       ArrayRef<unsigned> InsertLoc = IVI->getIndices();
@@ -489,7 +512,7 @@ static bool nextRealType(SmallVectorImpl<CompositeType *> &SubTypes,
 bool llvm::isInTailCallPosition(ImmutableCallSite CS, const TargetMachine &TM) {
   const Instruction *I = CS.getInstruction();
   const BasicBlock *ExitBB = I->getParent();
-  const TerminatorInst *Term = ExitBB->getTerminator();
+  const Instruction *Term = ExitBB->getTerminator();
   const ReturnInst *Ret = dyn_cast<ReturnInst>(Term);
 
   // The block must end in a return statement or unreachable.
@@ -501,7 +524,8 @@ bool llvm::isInTailCallPosition(ImmutableCallSite CS, const TargetMachine &TM) {
   // longjmp on x86), it can end up causing miscompilation that has not
   // been fully understood.
   if (!Ret &&
-      (!TM.Options.GuaranteedTailCallOpt || !isa<UnreachableInst>(Term)))
+      ((!TM.Options.GuaranteedTailCallOpt &&
+        CS.getCallingConv() != CallingConv::Tail) || !isa<UnreachableInst>(Term)))
     return false;
 
   // If I will have a chain, make sure no other instruction that will have a
@@ -514,14 +538,77 @@ bool llvm::isInTailCallPosition(ImmutableCallSite CS, const TargetMachine &TM) {
       // Debug info intrinsics do not get in the way of tail call optimization.
       if (isa<DbgInfoIntrinsic>(BBI))
         continue;
+      // A lifetime end or assume intrinsic should not stop tail call
+      // optimization.
+      if (const IntrinsicInst *II = dyn_cast<IntrinsicInst>(BBI))
+        if (II->getIntrinsicID() == Intrinsic::lifetime_end ||
+            II->getIntrinsicID() == Intrinsic::assume)
+          continue;
       if (BBI->mayHaveSideEffects() || BBI->mayReadFromMemory() ||
-          !isSafeToSpeculativelyExecute(BBI))
+          !isSafeToSpeculativelyExecute(&*BBI))
         return false;
     }
 
   const Function *F = ExitBB->getParent();
   return returnTypeIsEligibleForTailCall(
       F, I, Ret, *TM.getSubtargetImpl(*F)->getTargetLowering());
+}
+
+bool llvm::attributesPermitTailCall(const Function *F, const Instruction *I,
+                                    const ReturnInst *Ret,
+                                    const TargetLoweringBase &TLI,
+                                    bool *AllowDifferingSizes) {
+  // ADS may be null, so don't write to it directly.
+  bool DummyADS;
+  bool &ADS = AllowDifferingSizes ? *AllowDifferingSizes : DummyADS;
+  ADS = true;
+
+  AttrBuilder CallerAttrs(F->getAttributes(), AttributeList::ReturnIndex);
+  AttrBuilder CalleeAttrs(cast<CallInst>(I)->getAttributes(),
+                          AttributeList::ReturnIndex);
+
+  // NoAlias and NonNull are completely benign as far as calling convention
+  // goes, they shouldn't affect whether the call is a tail call.
+  CallerAttrs.removeAttribute(Attribute::NoAlias);
+  CalleeAttrs.removeAttribute(Attribute::NoAlias);
+  CallerAttrs.removeAttribute(Attribute::NonNull);
+  CalleeAttrs.removeAttribute(Attribute::NonNull);
+
+  if (CallerAttrs.contains(Attribute::ZExt)) {
+    if (!CalleeAttrs.contains(Attribute::ZExt))
+      return false;
+
+    ADS = false;
+    CallerAttrs.removeAttribute(Attribute::ZExt);
+    CalleeAttrs.removeAttribute(Attribute::ZExt);
+  } else if (CallerAttrs.contains(Attribute::SExt)) {
+    if (!CalleeAttrs.contains(Attribute::SExt))
+      return false;
+
+    ADS = false;
+    CallerAttrs.removeAttribute(Attribute::SExt);
+    CalleeAttrs.removeAttribute(Attribute::SExt);
+  }
+
+  // Drop sext and zext return attributes if the result is not used.
+  // This enables tail calls for code like:
+  //
+  // define void @caller() {
+  // entry:
+  //   %unused_result = tail call zeroext i1 @callee()
+  //   br label %retlabel
+  // retlabel:
+  //   ret void
+  // }
+  if (I->use_empty()) {
+    CalleeAttrs.removeAttribute(Attribute::SExt);
+    CalleeAttrs.removeAttribute(Attribute::ZExt);
+  }
+
+  // If they're still different, there's some facet we don't understand
+  // (currently only "inreg", but in future who knows). It may be OK but the
+  // only safe option is to reject the tail call.
+  return CallerAttrs == CalleeAttrs;
 }
 
 bool llvm::returnTypeIsEligibleForTailCall(const Function *F,
@@ -537,40 +624,29 @@ bool llvm::returnTypeIsEligibleForTailCall(const Function *F,
   if (isa<UndefValue>(Ret->getOperand(0))) return true;
 
   // Make sure the attributes attached to each return are compatible.
-  AttrBuilder CallerAttrs(F->getAttributes(),
-                          AttributeSet::ReturnIndex);
-  AttrBuilder CalleeAttrs(cast<CallInst>(I)->getAttributes(),
-                          AttributeSet::ReturnIndex);
-
-  // Noalias is completely benign as far as calling convention goes, it
-  // shouldn't affect whether the call is a tail call.
-  CallerAttrs = CallerAttrs.removeAttribute(Attribute::NoAlias);
-  CalleeAttrs = CalleeAttrs.removeAttribute(Attribute::NoAlias);
-
-  bool AllowDifferingSizes = true;
-  if (CallerAttrs.contains(Attribute::ZExt)) {
-    if (!CalleeAttrs.contains(Attribute::ZExt))
-      return false;
-
-    AllowDifferingSizes = false;
-    CallerAttrs.removeAttribute(Attribute::ZExt);
-    CalleeAttrs.removeAttribute(Attribute::ZExt);
-  } else if (CallerAttrs.contains(Attribute::SExt)) {
-    if (!CalleeAttrs.contains(Attribute::SExt))
-      return false;
-
-    AllowDifferingSizes = false;
-    CallerAttrs.removeAttribute(Attribute::SExt);
-    CalleeAttrs.removeAttribute(Attribute::SExt);
-  }
-
-  // If they're still different, there's some facet we don't understand
-  // (currently only "inreg", but in future who knows). It may be OK but the
-  // only safe option is to reject the tail call.
-  if (CallerAttrs != CalleeAttrs)
+  bool AllowDifferingSizes;
+  if (!attributesPermitTailCall(F, I, Ret, TLI, &AllowDifferingSizes))
     return false;
 
   const Value *RetVal = Ret->getOperand(0), *CallVal = I;
+  // Intrinsic like llvm.memcpy has no return value, but the expanded
+  // libcall may or may not have return value. On most platforms, it
+  // will be expanded as memcpy in libc, which returns the first
+  // argument. On other platforms like arm-none-eabi, memcpy may be
+  // expanded as library call without return value, like __aeabi_memcpy.
+  const CallInst *Call = cast<CallInst>(I);
+  if (Function *F = Call->getCalledFunction()) {
+    Intrinsic::ID IID = F->getIntrinsicID();
+    if (((IID == Intrinsic::memcpy &&
+          TLI.getLibcallName(RTLIB::MEMCPY) == StringRef("memcpy")) ||
+         (IID == Intrinsic::memmove &&
+          TLI.getLibcallName(RTLIB::MEMMOVE) == StringRef("memmove")) ||
+         (IID == Intrinsic::memset &&
+          TLI.getLibcallName(RTLIB::MEMSET) == StringRef("memset"))) &&
+        RetVal == Call->getArgOperand(0))
+      return true;
+  }
+
   SmallVector<unsigned, 4> RetPath, CallPath;
   SmallVector<CompositeType *, 4> RetSubTypes, CallSubTypes;
 
@@ -618,28 +694,95 @@ bool llvm::returnTypeIsEligibleForTailCall(const Function *F,
   return true;
 }
 
-bool llvm::canBeOmittedFromSymbolTable(const GlobalValue *GV) {
-  if (!GV->hasLinkOnceODRLinkage())
-    return false;
+static void collectEHScopeMembers(
+    DenseMap<const MachineBasicBlock *, int> &EHScopeMembership, int EHScope,
+    const MachineBasicBlock *MBB) {
+  SmallVector<const MachineBasicBlock *, 16> Worklist = {MBB};
+  while (!Worklist.empty()) {
+    const MachineBasicBlock *Visiting = Worklist.pop_back_val();
+    // Don't follow blocks which start new scopes.
+    if (Visiting->isEHPad() && Visiting != MBB)
+      continue;
 
-  if (GV->hasUnnamedAddr())
-    return true;
+    // Add this MBB to our scope.
+    auto P = EHScopeMembership.insert(std::make_pair(Visiting, EHScope));
 
-  // If it is a non constant variable, it needs to be uniqued across shared
-  // objects.
-  if (const GlobalVariable *Var = dyn_cast<GlobalVariable>(GV)) {
-    if (!Var->isConstant())
-      return false;
+    // Don't revisit blocks.
+    if (!P.second) {
+      assert(P.first->second == EHScope && "MBB is part of two scopes!");
+      continue;
+    }
+
+    // Returns are boundaries where scope transfer can occur, don't follow
+    // successors.
+    if (Visiting->isEHScopeReturnBlock())
+      continue;
+
+    for (const MachineBasicBlock *Succ : Visiting->successors())
+      Worklist.push_back(Succ);
+  }
+}
+
+DenseMap<const MachineBasicBlock *, int>
+llvm::getEHScopeMembership(const MachineFunction &MF) {
+  DenseMap<const MachineBasicBlock *, int> EHScopeMembership;
+
+  // We don't have anything to do if there aren't any EH pads.
+  if (!MF.hasEHScopes())
+    return EHScopeMembership;
+
+  int EntryBBNumber = MF.front().getNumber();
+  bool IsSEH = isAsynchronousEHPersonality(
+      classifyEHPersonality(MF.getFunction().getPersonalityFn()));
+
+  const TargetInstrInfo *TII = MF.getSubtarget().getInstrInfo();
+  SmallVector<const MachineBasicBlock *, 16> EHScopeBlocks;
+  SmallVector<const MachineBasicBlock *, 16> UnreachableBlocks;
+  SmallVector<const MachineBasicBlock *, 16> SEHCatchPads;
+  SmallVector<std::pair<const MachineBasicBlock *, int>, 16> CatchRetSuccessors;
+  for (const MachineBasicBlock &MBB : MF) {
+    if (MBB.isEHScopeEntry()) {
+      EHScopeBlocks.push_back(&MBB);
+    } else if (IsSEH && MBB.isEHPad()) {
+      SEHCatchPads.push_back(&MBB);
+    } else if (MBB.pred_empty()) {
+      UnreachableBlocks.push_back(&MBB);
+    }
+
+    MachineBasicBlock::const_iterator MBBI = MBB.getFirstTerminator();
+
+    // CatchPads are not scopes for SEH so do not consider CatchRet to
+    // transfer control to another scope.
+    if (MBBI == MBB.end() || MBBI->getOpcode() != TII->getCatchReturnOpcode())
+      continue;
+
+    // FIXME: SEH CatchPads are not necessarily in the parent function:
+    // they could be inside a finally block.
+    const MachineBasicBlock *Successor = MBBI->getOperand(0).getMBB();
+    const MachineBasicBlock *SuccessorColor = MBBI->getOperand(1).getMBB();
+    CatchRetSuccessors.push_back(
+        {Successor, IsSEH ? EntryBBNumber : SuccessorColor->getNumber()});
   }
 
-  // An alias can point to a variable. We could try to resolve the alias to
-  // decide, but for now just don't hide them.
-  if (isa<GlobalAlias>(GV))
-    return false;
+  // We don't have anything to do if there aren't any EH pads.
+  if (EHScopeBlocks.empty())
+    return EHScopeMembership;
 
-  GlobalStatus GS;
-  if (GlobalStatus::analyzeGlobal(GV, GS))
-    return false;
-
-  return !GS.IsCompared;
+  // Identify all the basic blocks reachable from the function entry.
+  collectEHScopeMembers(EHScopeMembership, EntryBBNumber, &MF.front());
+  // All blocks not part of a scope are in the parent function.
+  for (const MachineBasicBlock *MBB : UnreachableBlocks)
+    collectEHScopeMembers(EHScopeMembership, EntryBBNumber, MBB);
+  // Next, identify all the blocks inside the scopes.
+  for (const MachineBasicBlock *MBB : EHScopeBlocks)
+    collectEHScopeMembers(EHScopeMembership, MBB->getNumber(), MBB);
+  // SEH CatchPads aren't really scopes, handle them separately.
+  for (const MachineBasicBlock *MBB : SEHCatchPads)
+    collectEHScopeMembers(EHScopeMembership, EntryBBNumber, MBB);
+  // Finally, identify all the targets of a catchret.
+  for (std::pair<const MachineBasicBlock *, int> CatchRetPair :
+       CatchRetSuccessors)
+    collectEHScopeMembers(EHScopeMembership, CatchRetPair.second,
+                          CatchRetPair.first);
+  return EHScopeMembership;
 }

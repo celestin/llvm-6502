@@ -16,16 +16,17 @@ syn case match
 " benefit as much from having dedicated highlighting rules.
 syn keyword llvmType void half float double x86_fp80 fp128 ppc_fp128
 syn keyword llvmType label metadata x86_mmx
-syn keyword llvmType type label opaque
+syn keyword llvmType type label opaque token
 syn match   llvmType /\<i\d\+\>/
 
 " Instructions.
 " The true and false tokens can be used for comparison opcodes, but it's
 " much more common for these tokens to be used for boolean constants.
 syn keyword llvmStatement add addrspacecast alloca and arcp ashr atomicrmw
-syn keyword llvmStatement bitcast br call cmpxchg eq exact extractelement
+syn keyword llvmStatement bitcast br catchpad catchswitch catchret call callbr
+syn keyword llvmStatement cleanuppad cleanupret cmpxchg eq exact extractelement
 syn keyword llvmStatement extractvalue fadd fast fcmp fdiv fence fmul fpext
-syn keyword llvmStatement fptosi fptoui fptrunc free frem fsub getelementptr
+syn keyword llvmStatement fptosi fptoui fptrunc free frem fsub fneg getelementptr
 syn keyword llvmStatement icmp inbounds indirectbr insertelement insertvalue
 syn keyword llvmStatement inttoptr invoke landingpad load lshr malloc max min
 syn keyword llvmStatement mul nand ne ninf nnan nsw nsz nuw oeq oge ogt ole
@@ -36,27 +37,141 @@ syn keyword llvmStatement umax umin une uno unreachable unwind urem va_arg
 syn keyword llvmStatement xchg xor zext
 
 " Keywords.
-syn keyword llvmKeyword acq_rel acquire sanitize_address addrspace alias align
-syn keyword llvmKeyword alignstack alwaysinline appending arm_aapcs_vfpcc
-syn keyword llvmKeyword arm_aapcscc arm_apcscc asm atomic available_externally
-syn keyword llvmKeyword blockaddress byval c catch cc ccc cleanup coldcc common
-syn keyword llvmKeyword constant datalayout declare default define deplibs
-syn keyword llvmKeyword distinct dllexport dllimport except extern_weak external
-syn keyword llvmKeyword externally_initialized fastcc filter gc global hidden
-syn keyword llvmKeyword initialexec inlinehint inreg intel_ocl_bicc inteldialect
-syn keyword llvmKeyword internal linkonce linkonce_odr localdynamic localexec
-syn keyword llvmKeyword minsize module monotonic msp430_intrcc naked nest
-syn keyword llvmKeyword noalias nocapture noimplicitfloat noinline nonlazybind
-syn keyword llvmKeyword noredzone noreturn nounwind optnone optsize personality
-syn keyword llvmKeyword private protected ptx_device ptx_kernel readnone
-syn keyword llvmKeyword readonly release returns_twice sanitize_thread
-syn keyword llvmKeyword sanitize_memory section seq_cst sideeffect signext
-syn keyword llvmKeyword singlethread spir_func spir_kernel sret ssp sspreq
-syn keyword llvmKeyword sspstrong tail target thread_local to triple
-syn keyword llvmKeyword unnamed_addr unordered uwtable volatile weak weak_odr
-syn keyword llvmKeyword x86_fastcallcc x86_stdcallcc x86_thiscallcc
-syn keyword llvmKeyword x86_64_sysvcc x86_64_win64cc zeroext uselistorder
-syn keyword llvmKeyword uselistorder_bb
+syn keyword llvmKeyword
+      \ acq_rel
+      \ acquire
+      \ addrspace
+      \ alias
+      \ align
+      \ alignstack
+      \ alwaysinline
+      \ appending
+      \ argmemonly
+      \ arm_aapcscc
+      \ arm_aapcs_vfpcc
+      \ arm_apcscc
+      \ asm
+      \ atomic
+      \ available_externally
+      \ blockaddress
+      \ builtin
+      \ byval
+      \ c
+      \ catch
+      \ caller
+      \ cc
+      \ ccc
+      \ cleanup
+      \ coldcc
+      \ comdat
+      \ common
+      \ constant
+      \ datalayout
+      \ declare
+      \ default
+      \ define
+      \ deplibs
+      \ dereferenceable
+      \ distinct
+      \ dllexport
+      \ dllimport
+      \ dso_local
+      \ dso_preemptable
+      \ except
+      \ external
+      \ externally_initialized
+      \ extern_weak
+      \ fastcc
+      \ tailcc
+      \ filter
+      \ from
+      \ gc
+      \ global
+      \ hhvmcc
+      \ hhvm_ccc
+      \ hidden
+      \ immarg
+      \ initialexec
+      \ inlinehint
+      \ inreg
+      \ inteldialect
+      \ intel_ocl_bicc
+      \ internal
+      \ linkonce
+      \ linkonce_odr
+      \ localdynamic
+      \ localexec
+      \ local_unnamed_addr
+      \ minsize
+      \ module
+      \ monotonic
+      \ msp430_intrcc
+      \ musttail
+      \ naked
+      \ nest
+      \ noalias
+      \ nobuiltin
+      \ nocapture
+      \ noimplicitfloat
+      \ noinline
+      \ nonlazybind
+      \ nonnull
+      \ norecurse
+      \ noredzone
+      \ noreturn
+      \ nounwind
+      \ optnone
+      \ optsize
+      \ personality
+      \ private
+      \ protected
+      \ ptx_device
+      \ ptx_kernel
+      \ readnone
+      \ readonly
+      \ release
+      \ returned
+      \ returns_twice
+      \ sanitize_address
+      \ sanitize_memory
+      \ sanitize_thread
+      \ section
+      \ seq_cst
+      \ sideeffect
+      \ signext
+      \ syncscope
+      \ source_filename
+      \ speculatable
+      \ spir_func
+      \ spir_kernel
+      \ sret
+      \ ssp
+      \ sspreq
+      \ sspstrong
+      \ strictfp
+      \ swiftcc
+      \ swiftself
+      \ tail
+      \ target
+      \ thread_local
+      \ to
+      \ triple
+      \ unnamed_addr
+      \ unordered
+      \ uselistorder
+      \ uselistorder_bb
+      \ uwtable
+      \ volatile
+      \ weak
+      \ weak_odr
+      \ within
+      \ writeonly
+      \ x86_64_sysvcc
+      \ win64cc
+      \ x86_fastcallcc
+      \ x86_stdcallcc
+      \ x86_thiscallcc
+      \ zeroext
 
 " Obsolete keywords.
 syn keyword llvmError  getresult begin end
@@ -67,7 +182,7 @@ syn match   llvmNumber /-\?\<\d\+\>/
 syn match   llvmFloat  /-\?\<\d\+\.\d*\(e[+-]\d\+\)\?\>/
 syn match   llvmFloat  /\<0x\x\+\>/
 syn keyword llvmBoolean true false
-syn keyword llvmConstant zeroinitializer undef null
+syn keyword llvmConstant zeroinitializer undef null none
 syn match   llvmComment /;.*$/
 syn region  llvmString start=/"/ skip=/\\"/ end=/"/
 syn match   llvmLabel /[-a-zA-Z$._][-a-zA-Z$._0-9]*:/
@@ -88,6 +203,8 @@ syn match   llvmConstant /\<DIFlag[A-Za-z]\+\>/
 syn match  llvmSpecialComment /;\s*PR\d*\s*$/
 syn match  llvmSpecialComment /;\s*REQUIRES:.*$/
 syn match  llvmSpecialComment /;\s*RUN:.*$/
+syn match  llvmSpecialComment /;\s*CHECK:.*$/
+syn match  llvmSpecialComment "\v;\s*CHECK-(NEXT|NOT|DAG|SAME|LABEL):.*$"
 syn match  llvmSpecialComment /;\s*XFAIL:.*$/
 
 if version >= 508 || !exists("did_c_syn_inits")

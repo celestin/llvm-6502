@@ -1,9 +1,8 @@
 //===-- RuntimeDyldCOFF.h - Run-time dynamic linker for MC-JIT ---*- C++ -*-==//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -15,7 +14,6 @@
 #define LLVM_RUNTIME_DYLD_COFF_H
 
 #include "RuntimeDyldImpl.h"
-#include "llvm/ADT/DenseMap.h"
 
 #define DEBUG_TYPE "dyld"
 
@@ -34,11 +32,11 @@ public:
 
   static std::unique_ptr<RuntimeDyldCOFF>
   create(Triple::ArchType Arch, RuntimeDyld::MemoryManager &MemMgr,
-         RuntimeDyld::SymbolResolver &Resolver);
+         JITSymbolResolver &Resolver);
 
 protected:
   RuntimeDyldCOFF(RuntimeDyld::MemoryManager &MemMgr,
-                  RuntimeDyld::SymbolResolver &Resolver)
+                  JITSymbolResolver &Resolver)
     : RuntimeDyldImpl(MemMgr, Resolver) {}
   uint64_t getSymbolOffset(const SymbolRef &Sym);
 };

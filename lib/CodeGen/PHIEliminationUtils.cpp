@@ -1,9 +1,8 @@
 //===-- PHIEliminationUtils.cpp - Helper functions for PHI elimination ----===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -28,7 +27,7 @@ llvm::findPHICopyInsertPoint(MachineBasicBlock* MBB, MachineBasicBlock* SuccMBB,
   // Usually, we just want to insert the copy before the first terminator
   // instruction. However, for the edge going to a landing pad, we must insert
   // the copy before the call/invoke instruction.
-  if (!SuccMBB->isLandingPad())
+  if (!SuccMBB->isEHPad())
     return MBB->getFirstTerminator();
 
   // Discover any defs/uses in this basic block.
@@ -54,6 +53,7 @@ llvm::findPHICopyInsertPoint(MachineBasicBlock* MBB, MachineBasicBlock* SuccMBB,
     ++InsertPoint;
   }
 
-  // Make sure the copy goes after any phi nodes however.
+  // Make sure the copy goes after any phi nodes but before
+  // any debug nodes.
   return MBB->SkipPHIsAndLabels(InsertPoint);
 }

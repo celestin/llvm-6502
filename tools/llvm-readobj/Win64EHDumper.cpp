@@ -1,9 +1,8 @@
 //===- Win64EHDumper.cpp - Win64 EH Printer ---------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -120,13 +119,17 @@ static std::string formatSymbol(const Dumper::Context &Ctx,
 
   SymbolRef Symbol;
   if (!Ctx.ResolveSymbol(Section, Offset, Symbol, Ctx.UserData)) {
-    if (ErrorOr<StringRef> Name = Symbol.getName()) {
+    Expected<StringRef> Name = Symbol.getName();
+    if (Name) {
       OS << *Name;
       if (Displacement > 0)
         OS << format(" +0x%X (0x%" PRIX64 ")", Displacement, Offset);
       else
         OS << format(" (0x%" PRIX64 ")", Offset);
       return OS.str();
+    } else {
+      // TODO: Actually report errors helpfully.
+      consumeError(Name.takeError());
     }
   }
 
@@ -144,16 +147,15 @@ static std::error_code resolveRelocation(const Dumper::Context &Ctx,
           Ctx.ResolveSymbol(Section, Offset, Symbol, Ctx.UserData))
     return EC;
 
-  ErrorOr<uint64_t> ResolvedAddressOrErr = Symbol.getAddress();
-  if (std::error_code EC = ResolvedAddressOrErr.getError())
-    return EC;
+  Expected<uint64_t> ResolvedAddressOrErr = Symbol.getAddress();
+  if (!ResolvedAddressOrErr)
+    return errorToErrorCode(ResolvedAddressOrErr.takeError());
   ResolvedAddress = *ResolvedAddressOrErr;
 
-  section_iterator SI = Ctx.COFF.section_begin();
-  if (std::error_code EC = Symbol.getSection(SI))
-    return EC;
-
-  ResolvedSection = Ctx.COFF.getCOFFSection(*SI);
+  Expected<section_iterator> SI = Symbol.getSection();
+  if (!SI)
+    return errorToErrorCode(SI.takeError());
+  ResolvedSection = Ctx.COFF.getCOFFSection(**SI);
   return std::error_code();
 }
 
@@ -257,7 +259,7 @@ void Dumper::printUnwindInfo(const Context &Ctx, const coff_section *Section,
         return;
       }
 
-      printUnwindCode(UI, ArrayRef<UnwindCode>(UCI, UCE));
+      printUnwindCode(UI, makeArrayRef(UCI, UCE));
       UCI = UCI + UsedSlots - 1;
     }
   }
@@ -287,7 +289,9 @@ void Dumper::printRuntimeFunction(const Context &Ctx,
   resolveRelocation(Ctx, Section, SectionOffset + 8, XData, Offset);
 
   ArrayRef<uint8_t> Contents;
-  error(Ctx.COFF.getSectionContents(XData, Contents));
+  if (Error E = Ctx.COFF.getSectionContents(XData, Contents))
+    reportError(std::move(E), Ctx.COFF.getFileName());
+
   if (Contents.empty())
     return;
 
@@ -302,14 +306,19 @@ void Dumper::printRuntimeFunction(const Context &Ctx,
 void Dumper::printData(const Context &Ctx) {
   for (const auto &Section : Ctx.COFF.sections()) {
     StringRef Name;
-    Section.getName(Name);
+    if (Expected<StringRef> NameOrErr = Section.getName())
+      Name = *NameOrErr;
+    else
+      consumeError(NameOrErr.takeError());
 
     if (Name != ".pdata" && !Name.startswith(".pdata$"))
       continue;
 
     const coff_section *PData = Ctx.COFF.getCOFFSection(Section);
     ArrayRef<uint8_t> Contents;
-    error(Ctx.COFF.getSectionContents(PData, Contents));
+
+    if (Error E = Ctx.COFF.getSectionContents(PData, Contents))
+      reportError(std::move(E), Ctx.COFF.getFileName());
     if (Contents.empty())
       continue;
 

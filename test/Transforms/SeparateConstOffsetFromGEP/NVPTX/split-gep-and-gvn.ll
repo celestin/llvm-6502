@@ -1,5 +1,8 @@
-; RUN: llc < %s -march=nvptx64 -mcpu=sm_20 | FileCheck %s --check-prefix=PTX
-; RUN: opt < %s -S -separate-const-offset-from-gep -reassociate-geps-verify-no-dead-code -gvn | FileCheck %s --check-prefix=IR
+; RUN: llc < %s -mtriple=nvptx64-nvidia-cuda -mcpu=sm_20 \
+; RUN:     | FileCheck %s --check-prefix=PTX
+; RUN: opt < %s -mtriple=nvptx64-nvidia-cuda -S -separate-const-offset-from-gep \
+; RUN:       -reassociate-geps-verify-no-dead-code -gvn \
+; RUN:     | FileCheck %s --check-prefix=IR
 
 ; Verifies the SeparateConstOffsetFromGEP pass.
 ; The following code computes
@@ -11,9 +14,6 @@
 ; *output = base[0] + base[1] + base[32] + base[33];
 ;
 ; so the backend can emit PTX that uses fewer virtual registers.
-
-target datalayout = "e-i64:64-v16:16-v32:32-n16:32:64"
-target triple = "nvptx64-unknown-unknown"
 
 @array = internal addrspace(3) constant [32 x [32 x float]] zeroinitializer, align 4
 
@@ -45,16 +45,18 @@ define void @sum_of_array(i32 %x, i32 %y, float* nocapture %output) {
   ret void
 }
 ; PTX-LABEL: sum_of_array(
-; PTX: ld.shared.f32 {{%f[0-9]+}}, {{\[}}[[BASE_REG:%(rd|r)[0-9]+]]{{\]}}
-; PTX: ld.shared.f32 {{%f[0-9]+}}, {{\[}}[[BASE_REG]]+4{{\]}}
-; PTX: ld.shared.f32 {{%f[0-9]+}}, {{\[}}[[BASE_REG]]+128{{\]}}
-; PTX: ld.shared.f32 {{%f[0-9]+}}, {{\[}}[[BASE_REG]]+132{{\]}}
+; PTX-DAG: ld.shared.f32 {{%f[0-9]+}}, {{\[}}[[BASE_REG:%(rd|r)[0-9]+]]{{\]}}
+; PTX-DAG: ld.shared.f32 {{%f[0-9]+}}, {{\[}}[[BASE_REG]]+4{{\]}}
+; PTX-DAG: ld.shared.f32 {{%f[0-9]+}}, {{\[}}[[BASE_REG]]+128{{\]}}
+; PTX-DAG: ld.shared.f32 {{%f[0-9]+}}, {{\[}}[[BASE_REG]]+132{{\]}}
 
 ; IR-LABEL: @sum_of_array(
-; IR: [[BASE_PTR:%[a-zA-Z0-9]+]] = getelementptr inbounds [32 x [32 x float]], [32 x [32 x float]] addrspace(3)* @array, i64 0, i64 %{{[a-zA-Z0-9]+}}, i64 %{{[a-zA-Z0-9]+}}
-; IR: getelementptr float, float addrspace(3)* [[BASE_PTR]], i64 1
-; IR: getelementptr float, float addrspace(3)* [[BASE_PTR]], i64 32
-; IR: getelementptr float, float addrspace(3)* [[BASE_PTR]], i64 33
+; TODO: GVN is unable to preserve the "inbounds" keyword on the first GEP. Need
+; some infrastructure changes to enable such optimizations.
+; IR: [[BASE_PTR:%[a-zA-Z0-9]+]] = getelementptr [32 x [32 x float]], [32 x [32 x float]] addrspace(3)* @array, i64 0, i64 %{{[a-zA-Z0-9]+}}, i64 %{{[a-zA-Z0-9]+}}
+; IR: getelementptr inbounds float, float addrspace(3)* [[BASE_PTR]], i64 1
+; IR: getelementptr inbounds float, float addrspace(3)* [[BASE_PTR]], i64 32
+; IR: getelementptr inbounds float, float addrspace(3)* [[BASE_PTR]], i64 33
 
 ; @sum_of_array2 is very similar to @sum_of_array. The only difference is in
 ; the order of "sext" and "add" when computing the array indices. @sum_of_array
@@ -88,16 +90,16 @@ define void @sum_of_array2(i32 %x, i32 %y, float* nocapture %output) {
   ret void
 }
 ; PTX-LABEL: sum_of_array2(
-; PTX: ld.shared.f32 {{%f[0-9]+}}, {{\[}}[[BASE_REG:%(rd|r)[0-9]+]]{{\]}}
-; PTX: ld.shared.f32 {{%f[0-9]+}}, {{\[}}[[BASE_REG]]+4{{\]}}
-; PTX: ld.shared.f32 {{%f[0-9]+}}, {{\[}}[[BASE_REG]]+128{{\]}}
-; PTX: ld.shared.f32 {{%f[0-9]+}}, {{\[}}[[BASE_REG]]+132{{\]}}
+; PTX-DAG: ld.shared.f32 {{%f[0-9]+}}, {{\[}}[[BASE_REG:%(rd|r)[0-9]+]]{{\]}}
+; PTX-DAG: ld.shared.f32 {{%f[0-9]+}}, {{\[}}[[BASE_REG]]+4{{\]}}
+; PTX-DAG: ld.shared.f32 {{%f[0-9]+}}, {{\[}}[[BASE_REG]]+128{{\]}}
+; PTX-DAG: ld.shared.f32 {{%f[0-9]+}}, {{\[}}[[BASE_REG]]+132{{\]}}
 
 ; IR-LABEL: @sum_of_array2(
-; IR: [[BASE_PTR:%[a-zA-Z0-9]+]] = getelementptr inbounds [32 x [32 x float]], [32 x [32 x float]] addrspace(3)* @array, i64 0, i64 %{{[a-zA-Z0-9]+}}, i64 %{{[a-zA-Z0-9]+}}
-; IR: getelementptr float, float addrspace(3)* [[BASE_PTR]], i64 1
-; IR: getelementptr float, float addrspace(3)* [[BASE_PTR]], i64 32
-; IR: getelementptr float, float addrspace(3)* [[BASE_PTR]], i64 33
+; IR: [[BASE_PTR:%[a-zA-Z0-9]+]] = getelementptr [32 x [32 x float]], [32 x [32 x float]] addrspace(3)* @array, i64 0, i64 %{{[a-zA-Z0-9]+}}, i64 %{{[a-zA-Z0-9]+}}
+; IR: getelementptr inbounds float, float addrspace(3)* [[BASE_PTR]], i64 1
+; IR: getelementptr inbounds float, float addrspace(3)* [[BASE_PTR]], i64 32
+; IR: getelementptr inbounds float, float addrspace(3)* [[BASE_PTR]], i64 33
 
 
 ; This function loads
@@ -138,16 +140,16 @@ define void @sum_of_array3(i32 %x, i32 %y, float* nocapture %output) {
   ret void
 }
 ; PTX-LABEL: sum_of_array3(
-; PTX: ld.shared.f32 {{%f[0-9]+}}, {{\[}}[[BASE_REG:%(rd|r)[0-9]+]]{{\]}}
-; PTX: ld.shared.f32 {{%f[0-9]+}}, {{\[}}[[BASE_REG]]+4{{\]}}
-; PTX: ld.shared.f32 {{%f[0-9]+}}, {{\[}}[[BASE_REG]]+128{{\]}}
-; PTX: ld.shared.f32 {{%f[0-9]+}}, {{\[}}[[BASE_REG]]+132{{\]}}
+; PTX-DAG: ld.shared.f32 {{%f[0-9]+}}, {{\[}}[[BASE_REG:%(rd|r)[0-9]+]]{{\]}}
+; PTX-DAG: ld.shared.f32 {{%f[0-9]+}}, {{\[}}[[BASE_REG]]+4{{\]}}
+; PTX-DAG: ld.shared.f32 {{%f[0-9]+}}, {{\[}}[[BASE_REG]]+128{{\]}}
+; PTX-DAG: ld.shared.f32 {{%f[0-9]+}}, {{\[}}[[BASE_REG]]+132{{\]}}
 
 ; IR-LABEL: @sum_of_array3(
-; IR: [[BASE_PTR:%[a-zA-Z0-9]+]] = getelementptr inbounds [32 x [32 x float]], [32 x [32 x float]] addrspace(3)* @array, i64 0, i64 %{{[a-zA-Z0-9]+}}, i64 %{{[a-zA-Z0-9]+}}
-; IR: getelementptr float, float addrspace(3)* [[BASE_PTR]], i64 1
-; IR: getelementptr float, float addrspace(3)* [[BASE_PTR]], i64 32
-; IR: getelementptr float, float addrspace(3)* [[BASE_PTR]], i64 33
+; IR: [[BASE_PTR:%[a-zA-Z0-9]+]] = getelementptr [32 x [32 x float]], [32 x [32 x float]] addrspace(3)* @array, i64 0, i64 %{{[a-zA-Z0-9]+}}, i64 %{{[a-zA-Z0-9]+}}
+; IR: getelementptr inbounds float, float addrspace(3)* [[BASE_PTR]], i64 1
+; IR: getelementptr inbounds float, float addrspace(3)* [[BASE_PTR]], i64 32
+; IR: getelementptr inbounds float, float addrspace(3)* [[BASE_PTR]], i64 33
 
 
 ; This function loads
@@ -184,13 +186,51 @@ define void @sum_of_array4(i32 %x, i32 %y, float* nocapture %output) {
   ret void
 }
 ; PTX-LABEL: sum_of_array4(
-; PTX: ld.shared.f32 {{%f[0-9]+}}, {{\[}}[[BASE_REG:%(rd|r)[0-9]+]]{{\]}}
-; PTX: ld.shared.f32 {{%f[0-9]+}}, {{\[}}[[BASE_REG]]+4{{\]}}
-; PTX: ld.shared.f32 {{%f[0-9]+}}, {{\[}}[[BASE_REG]]+128{{\]}}
-; PTX: ld.shared.f32 {{%f[0-9]+}}, {{\[}}[[BASE_REG]]+132{{\]}}
+; PTX-DAG: ld.shared.f32 {{%f[0-9]+}}, {{\[}}[[BASE_REG:%(rd|r)[0-9]+]]{{\]}}
+; PTX-DAG: ld.shared.f32 {{%f[0-9]+}}, {{\[}}[[BASE_REG]]+4{{\]}}
+; PTX-DAG: ld.shared.f32 {{%f[0-9]+}}, {{\[}}[[BASE_REG]]+128{{\]}}
+; PTX-DAG: ld.shared.f32 {{%f[0-9]+}}, {{\[}}[[BASE_REG]]+132{{\]}}
 
 ; IR-LABEL: @sum_of_array4(
-; IR: [[BASE_PTR:%[a-zA-Z0-9]+]] = getelementptr inbounds [32 x [32 x float]], [32 x [32 x float]] addrspace(3)* @array, i64 0, i64 %{{[a-zA-Z0-9]+}}, i64 %{{[a-zA-Z0-9]+}}
-; IR: getelementptr float, float addrspace(3)* [[BASE_PTR]], i64 1
-; IR: getelementptr float, float addrspace(3)* [[BASE_PTR]], i64 32
-; IR: getelementptr float, float addrspace(3)* [[BASE_PTR]], i64 33
+; IR: [[BASE_PTR:%[a-zA-Z0-9]+]] = getelementptr [32 x [32 x float]], [32 x [32 x float]] addrspace(3)* @array, i64 0, i64 %{{[a-zA-Z0-9]+}}, i64 %{{[a-zA-Z0-9]+}}
+; IR: getelementptr inbounds float, float addrspace(3)* [[BASE_PTR]], i64 1
+; IR: getelementptr inbounds float, float addrspace(3)* [[BASE_PTR]], i64 32
+; IR: getelementptr inbounds float, float addrspace(3)* [[BASE_PTR]], i64 33
+
+
+; The source code is:
+;   p0 = &input[sext(x + y)];
+;   p1 = &input[sext(x + (y + 5))];
+;
+; Without reuniting extensions, SeparateConstOffsetFromGEP would emit
+;   p0 = &input[sext(x + y)];
+;   t1 = &input[sext(x) + sext(y)];
+;   p1 = &t1[5];
+;
+; With reuniting extensions, it merges p0 and t1 and thus emits
+;   p0 = &input[sext(x + y)];
+;   p1 = &p0[5];
+define void @reunion(i32 %x, i32 %y, float* %input) {
+; IR-LABEL: @reunion(
+; PTX-LABEL: reunion(
+entry:
+  %xy = add nsw i32 %x, %y
+  %0 = sext i32 %xy to i64
+  %p0 = getelementptr inbounds float, float* %input, i64 %0
+  %v0 = load float, float* %p0, align 4
+; PTX: ld.f32 %f{{[0-9]+}}, {{\[}}[[p0:%rd[0-9]+]]{{\]}}
+  call void @use(float %v0)
+
+  %y5 = add nsw i32 %y, 5
+  %xy5 = add nsw i32 %x, %y5
+  %1 = sext i32 %xy5 to i64
+  %p1 = getelementptr inbounds float, float* %input, i64 %1
+; IR: getelementptr inbounds float, float* %p0, i64 5
+  %v1 = load float, float* %p1, align 4
+; PTX: ld.f32 %f{{[0-9]+}}, {{\[}}[[p0]]+20{{\]}}
+  call void @use(float %v1)
+
+  ret void
+}
+
+declare void @use(float)

@@ -1,9 +1,8 @@
 //===-- DelaySlotFiller.cpp - SPARC delay slot filler ---------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -19,10 +18,10 @@
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
+#include "llvm/CodeGen/TargetInstrInfo.h"
+#include "llvm/CodeGen/TargetRegisterInfo.h"
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Target/TargetInstrInfo.h"
 #include "llvm/Target/TargetMachine.h"
-#include "llvm/Target/TargetRegisterInfo.h"
 
 using namespace llvm;
 
@@ -38,18 +37,12 @@ static cl::opt<bool> DisableDelaySlotFiller(
 
 namespace {
   struct Filler : public MachineFunctionPass {
-    /// Target machine description which we query for reg. names, data
-    /// layout, etc.
-    ///
-    TargetMachine &TM;
     const SparcSubtarget *Subtarget;
 
     static char ID;
-    Filler(TargetMachine &tm) : MachineFunctionPass(ID), TM(tm) {}
+    Filler() : MachineFunctionPass(ID) {}
 
-    const char *getPassName() const override {
-      return "SPARC Delay Slot Filler";
-    }
+    StringRef getPassName() const override { return "SPARC Delay Slot Filler"; }
 
     bool runOnMachineBasicBlock(MachineBasicBlock &MBB);
     bool runOnMachineFunction(MachineFunction &F) override {
@@ -64,6 +57,11 @@ namespace {
            FI != FE; ++FI)
         Changed |= runOnMachineBasicBlock(*FI);
       return Changed;
+    }
+
+    MachineFunctionProperties getRequiredProperties() const override {
+      return MachineFunctionProperties().set(
+          MachineFunctionProperties::Property::NoVRegs);
     }
 
     void insertCallDefsUses(MachineBasicBlock::iterator MI,
@@ -97,8 +95,8 @@ namespace {
 /// createSparcDelaySlotFillerPass - Returns a pass that fills in delay
 /// slots in Sparc MachineFunctions
 ///
-FunctionPass *llvm::createSparcDelaySlotFillerPass(TargetMachine &tm) {
-  return new Filler(tm);
+FunctionPass *llvm::createSparcDelaySlotFillerPass() {
+  return new Filler;
 }
 
 
@@ -122,6 +120,8 @@ bool Filler::runOnMachineBasicBlock(MachineBasicBlock &MBB) {
       continue;
     }
 
+    // TODO: If we ever want to support v7, this needs to be extended
+    // to cover all floating point operations.
     if (!Subtarget->isV9() &&
         (MI->getOpcode() == SP::FCMPS || MI->getOpcode() == SP::FCMPD
          || MI->getOpcode() == SP::FCMPQ)) {
@@ -206,8 +206,8 @@ Filler::findDelayInstr(MachineBasicBlock &MBB,
     if (!done)
       --I;
 
-    // skip debug value
-    if (I->isDebugValue())
+    // skip debug instruction
+    if (I->isDebugInstr())
       continue;
 
     if (I->hasUnmodeledSideEffects() || I->isInlineAsm() || I->isPosition() ||
@@ -253,7 +253,7 @@ bool Filler::delayHasHazard(MachineBasicBlock::iterator candidate,
     if (!MO.isReg())
       continue; // skip
 
-    unsigned Reg = MO.getReg();
+    Register Reg = MO.getReg();
 
     if (MO.isDef()) {
       // check whether Reg is defined or used before delay slot.
@@ -266,6 +266,22 @@ bool Filler::delayHasHazard(MachineBasicBlock::iterator candidate,
         return true;
     }
   }
+
+  unsigned Opcode = candidate->getOpcode();
+  // LD and LDD may have NOPs inserted afterwards in the case of some LEON
+  // processors, so we can't use the delay slot if this feature is switched-on.
+  if (Subtarget->insertNOPLoad()
+      &&
+      Opcode >=  SP::LDDArr && Opcode <= SP::LDrr)
+    return true;
+
+  // Same as above for FDIV and FSQRT on some LEON processors.
+  if (Subtarget->fixAllFDIVSQRT()
+      &&
+      Opcode >=  SP::FDIVD && Opcode <= SP::FSQRTD)
+    return true;
+
+
   return false;
 }
 
@@ -288,12 +304,12 @@ void Filler::insertCallDefsUses(MachineBasicBlock::iterator MI,
     assert(Reg.isUse() && "CALL first operand is not a use.");
     RegUses.insert(Reg.getReg());
 
-    const MachineOperand &RegOrImm = MI->getOperand(1);
-    if (RegOrImm.isImm())
+    const MachineOperand &Operand1 = MI->getOperand(1);
+    if (Operand1.isImm() || Operand1.isGlobal())
         break;
-    assert(RegOrImm.isReg() && "CALLrr second operand is not a register.");
-    assert(RegOrImm.isUse() && "CALLrr second operand is not a use.");
-    RegUses.insert(RegOrImm.getReg());
+    assert(Operand1.isReg() && "CALLrr second operand is not a register.");
+    assert(Operand1.isUse() && "CALLrr second operand is not a use.");
+    RegUses.insert(Operand1.getReg());
     break;
   }
 }
@@ -308,7 +324,7 @@ void Filler::insertDefsUses(MachineBasicBlock::iterator MI,
     if (!MO.isReg())
       continue;
 
-    unsigned Reg = MO.getReg();
+    Register Reg = MO.getReg();
     if (Reg == 0)
       continue;
     if (MO.isDef())
@@ -364,7 +380,7 @@ static bool combineRestoreADD(MachineBasicBlock::iterator RestoreMI,
   //
   // After :  restore <op0>, <op1>, %o[0-7]
 
-  unsigned reg = AddMI->getOperand(0).getReg();
+  Register reg = AddMI->getOperand(0).getReg();
   if (reg < SP::I0 || reg > SP::I7)
     return false;
 
@@ -392,7 +408,7 @@ static bool combineRestoreOR(MachineBasicBlock::iterator RestoreMI,
   //
   // After :  restore <op0>, <op1>, %o[0-7]
 
-  unsigned reg = OrMI->getOperand(0).getReg();
+  Register reg = OrMI->getOperand(0).getReg();
   if (reg < SP::I0 || reg > SP::I7)
     return false;
 
@@ -430,7 +446,7 @@ static bool combineRestoreSETHIi(MachineBasicBlock::iterator RestoreMI,
   //
   // After :  restore %g0, (imm3<<10), %o[0-7]
 
-  unsigned reg = SetHiMI->getOperand(0).getReg();
+  Register reg = SetHiMI->getOperand(0).getReg();
   if (reg < SP::I0 || reg > SP::I7)
     return false;
 

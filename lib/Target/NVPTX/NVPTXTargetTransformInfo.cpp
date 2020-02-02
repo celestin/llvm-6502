@@ -1,9 +1,8 @@
 //===-- NVPTXTargetTransformInfo.cpp - NVPTX specific TTI -----------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -13,9 +12,9 @@
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/CodeGen/BasicTTIImpl.h"
+#include "llvm/CodeGen/CostTable.h"
+#include "llvm/CodeGen/TargetLowering.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Target/CostTable.h"
-#include "llvm/Target/TargetLowering.h"
 using namespace llvm;
 
 #define DEBUG_TYPE "NVPTXtti"
@@ -32,16 +31,38 @@ static bool readsThreadIndex(const IntrinsicInst *II) {
 }
 
 static bool readsLaneId(const IntrinsicInst *II) {
-  return II->getIntrinsicID() == Intrinsic::ptx_read_laneid;
+  return II->getIntrinsicID() == Intrinsic::nvvm_read_ptx_sreg_laneid;
 }
 
 // Whether the given intrinsic is an atomic instruction in PTX.
 static bool isNVVMAtomic(const IntrinsicInst *II) {
   switch (II->getIntrinsicID()) {
     default: return false;
-    case Intrinsic::nvvm_atomic_load_add_f32:
     case Intrinsic::nvvm_atomic_load_inc_32:
     case Intrinsic::nvvm_atomic_load_dec_32:
+
+    case Intrinsic::nvvm_atomic_add_gen_f_cta:
+    case Intrinsic::nvvm_atomic_add_gen_f_sys:
+    case Intrinsic::nvvm_atomic_add_gen_i_cta:
+    case Intrinsic::nvvm_atomic_add_gen_i_sys:
+    case Intrinsic::nvvm_atomic_and_gen_i_cta:
+    case Intrinsic::nvvm_atomic_and_gen_i_sys:
+    case Intrinsic::nvvm_atomic_cas_gen_i_cta:
+    case Intrinsic::nvvm_atomic_cas_gen_i_sys:
+    case Intrinsic::nvvm_atomic_dec_gen_i_cta:
+    case Intrinsic::nvvm_atomic_dec_gen_i_sys:
+    case Intrinsic::nvvm_atomic_inc_gen_i_cta:
+    case Intrinsic::nvvm_atomic_inc_gen_i_sys:
+    case Intrinsic::nvvm_atomic_max_gen_i_cta:
+    case Intrinsic::nvvm_atomic_max_gen_i_sys:
+    case Intrinsic::nvvm_atomic_min_gen_i_cta:
+    case Intrinsic::nvvm_atomic_min_gen_i_sys:
+    case Intrinsic::nvvm_atomic_or_gen_i_cta:
+    case Intrinsic::nvvm_atomic_or_gen_i_sys:
+    case Intrinsic::nvvm_atomic_exch_gen_i_cta:
+    case Intrinsic::nvvm_atomic_exch_gen_i_sys:
+    case Intrinsic::nvvm_atomic_xor_gen_i_cta:
+    case Intrinsic::nvvm_atomic_xor_gen_i_sys:
       return true;
   }
 }
@@ -89,12 +110,12 @@ bool NVPTXTTIImpl::isSourceOfDivergence(const Value *V) {
   return false;
 }
 
-unsigned NVPTXTTIImpl::getArithmeticInstrCost(
+int NVPTXTTIImpl::getArithmeticInstrCost(
     unsigned Opcode, Type *Ty, TTI::OperandValueKind Opd1Info,
     TTI::OperandValueKind Opd2Info, TTI::OperandValueProperties Opd1PropInfo,
-    TTI::OperandValueProperties Opd2PropInfo) {
+    TTI::OperandValueProperties Opd2PropInfo, ArrayRef<const Value *> Args) {
   // Legalize the type.
-  std::pair<unsigned, MVT> LT = TLI->getTypeLegalizationCost(DL, Ty);
+  std::pair<int, MVT> LT = TLI->getTypeLegalizationCost(DL, Ty);
 
   int ISD = TLI->InstructionOpcodeToISD(Opcode);
 
@@ -118,9 +139,9 @@ unsigned NVPTXTTIImpl::getArithmeticInstrCost(
   }
 }
 
-void NVPTXTTIImpl::getUnrollingPreferences(Loop *L,
+void NVPTXTTIImpl::getUnrollingPreferences(Loop *L, ScalarEvolution &SE,
                                            TTI::UnrollingPreferences &UP) {
-  BaseT::getUnrollingPreferences(L, UP);
+  BaseT::getUnrollingPreferences(L, SE, UP);
 
   // Enable partial unrolling and runtime unrolling, but reduce the
   // threshold.  This partially unrolls small loops which are often

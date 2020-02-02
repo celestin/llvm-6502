@@ -1,9 +1,8 @@
 //===- Error.cpp - system_error extensions for Object -----------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -19,14 +18,17 @@ using namespace llvm;
 using namespace object;
 
 namespace {
+// FIXME: This class is only here to support the transition to llvm::Error. It
+// will be removed once this transition is complete. Clients should prefer to
+// deal with the Error value directly, rather than converting to error_code.
 class _object_error_category : public std::error_category {
 public:
-  const char* name() const LLVM_NOEXCEPT override;
+  const char* name() const noexcept override;
   std::string message(int ev) const override;
 };
 }
 
-const char *_object_error_category::name() const LLVM_NOEXCEPT {
+const char *_object_error_category::name() const noexcept {
   return "llvm.object";
 }
 
@@ -47,19 +49,44 @@ std::string _object_error_category::message(int EV) const {
     return "Invalid section index";
   case object_error::bitcode_section_not_found:
     return "Bitcode section not found in object file";
-  case object_error::macho_small_load_command:
-    return "Mach-O load command with size < 8 bytes";
-  case object_error::macho_load_segment_too_many_sections:
-    return "Mach-O segment load command contains too many sections";
-  case object_error::macho_load_segment_too_small:
-    return "Mach-O segment load command size is too small";
+  case object_error::invalid_symbol_index:
+    return "Invalid symbol index";
   }
   llvm_unreachable("An enumerator of object_error does not have a message "
                    "defined.");
+}
+
+void BinaryError::anchor() {}
+char BinaryError::ID = 0;
+char GenericBinaryError::ID = 0;
+
+GenericBinaryError::GenericBinaryError(Twine Msg) : Msg(Msg.str()) {}
+
+GenericBinaryError::GenericBinaryError(Twine Msg, object_error ECOverride)
+    : Msg(Msg.str()) {
+  setErrorCode(make_error_code(ECOverride));
+}
+
+void GenericBinaryError::log(raw_ostream &OS) const {
+  OS << Msg;
 }
 
 static ManagedStatic<_object_error_category> error_category;
 
 const std::error_category &object::object_category() {
   return *error_category;
+}
+
+llvm::Error llvm::object::isNotObjectErrorInvalidFileType(llvm::Error Err) {
+  return handleErrors(std::move(Err), [](std::unique_ptr<ECError> M) -> Error {
+    // Try to handle 'M'. If successful, return a success value from
+    // the handler.
+    if (M->convertToErrorCode() == object_error::invalid_file_type)
+      return Error::success();
+
+    // We failed to handle 'M' - return it from the handler.
+    // This value will be passed back from catchErrors and
+    // wind up in Err2, where it will be returned from this function.
+    return Error(std::move(M));
+  });
 }

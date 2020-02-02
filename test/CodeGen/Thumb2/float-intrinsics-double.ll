@@ -1,7 +1,7 @@
 ; RUN: llc < %s -mtriple=thumbv7-none-eabi   -mcpu=cortex-m3                    | FileCheck %s -check-prefix=CHECK -check-prefix=SOFT -check-prefix=NONE
 ; RUN: llc < %s -mtriple=thumbv7-none-eabihf -mcpu=cortex-m4                    | FileCheck %s -check-prefix=CHECK -check-prefix=SOFT -check-prefix=SP
 ; RUN: llc < %s -mtriple=thumbv7-none-eabihf -mcpu=cortex-m7                    | FileCheck %s -check-prefix=CHECK -check-prefix=HARD -check-prefix=DP -check-prefix=VFP  -check-prefix=FP-ARMv8
-; RUN: llc < %s -mtriple=thumbv7-none-eabihf -mcpu=cortex-m7 -mattr=+fp-only-sp | FileCheck %s -check-prefix=CHECK -check-prefix=SOFT -check-prefix=SP
+; RUN: llc < %s -mtriple=thumbv7-none-eabihf -mcpu=cortex-m7 -mattr=-fp64 | FileCheck %s -check-prefix=CHECK -check-prefix=SOFT -check-prefix=SP
 ; RUN: llc < %s -mtriple=thumbv7-none-eabihf -mcpu=cortex-a7                    | FileCheck %s -check-prefix=CHECK -check-prefix=HARD -check-prefix=DP -check-prefix=NEON -check-prefix=VFP4
 ; RUN: llc < %s -mtriple=thumbv7-none-eabihf -mcpu=cortex-a57                   | FileCheck %s -check-prefix=CHECK -check-prefix=HARD -check-prefix=DP -check-prefix=NEON -check-prefix=FP-ARMv8
 
@@ -109,8 +109,12 @@ declare double     @llvm.fabs.f64(double %Val)
 define double @abs_d(double %a) {
 ; CHECK-LABEL: abs_d:
 ; NONE: bic r1, r1, #-2147483648
-; SP: bl __aeabi_dsub
-; SP: bl __aeabi_dcmple
+; SP: vldr d1, .LCPI{{.*}}
+; SP: vmov r0, r1, d0
+; SP: vmov r2, r3, d1
+; SP: lsrs r2, r3, #31
+; SP: bfi r1, r2, #31, #1
+; SP: vmov d0, r0, r1
 ; DP: vabs.f64 d0, d0
   %1 = call double @llvm.fabs.f64(double %a)
   ret double %1
@@ -215,7 +219,7 @@ define i16 @d_to_h(double %a) {
 declare double @llvm.convert.from.fp16.f64(i16 %a)
 define double @h_to_d(i16 %a) {
 ; CHECK-LABEL: h_to_d:
-; NONE: bl __gnu_h2f_ieee
+; NONE: bl __aeabi_h2f
 ; NONE: bl __aeabi_f2d
 ; SP: vcvt{{[bt]}}.f32.f16
 ; SP: bl __aeabi_f2d

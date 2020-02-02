@@ -1,21 +1,21 @@
 //===- XCoreDisassembler.cpp - Disassembler for XCore -----------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// \brief This file is part of the XCore Disassembler.
+/// This file is part of the XCore Disassembler.
 ///
 //===----------------------------------------------------------------------===//
 
+#include "TargetInfo/XCoreTargetInfo.h"
 #include "XCore.h"
 #include "XCoreRegisterInfo.h"
 #include "llvm/MC/MCContext.h"
-#include "llvm/MC/MCDisassembler.h"
+#include "llvm/MC/MCDisassembler/MCDisassembler.h"
 #include "llvm/MC/MCFixedLenDisassembler.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCSubtargetInfo.h"
@@ -29,7 +29,7 @@ typedef MCDisassembler::DecodeStatus DecodeStatus;
 
 namespace {
 
-/// \brief A disassembler class for XCore.
+/// A disassembler class for XCore.
 class XCoreDisassembler : public MCDisassembler {
 public:
   XCoreDisassembler(const MCSubtargetInfo &STI, MCContext &Ctx) :
@@ -224,7 +224,7 @@ static DecodeStatus DecodeBitpOperand(MCInst &Inst, unsigned Val,
                                       uint64_t Address, const void *Decoder) {
   if (Val > 11)
     return MCDisassembler::Fail;
-  static unsigned Values[] = {
+  static const unsigned Values[] = {
     32 /*bpw*/, 1, 2, 3, 4, 5, 6, 7, 8, 16, 24, 32
   };
   Inst.addOperand(MCOperand::createImm(Values[Val]));
@@ -768,10 +768,6 @@ MCDisassembler::DecodeStatus XCoreDisassembler::getInstruction(
   return Fail;
 }
 
-namespace llvm {
-  extern Target TheXCoreTarget;
-}
-
 static MCDisassembler *createXCoreDisassembler(const Target &T,
                                                const MCSubtargetInfo &STI,
                                                MCContext &Ctx) {
@@ -780,6 +776,6 @@ static MCDisassembler *createXCoreDisassembler(const Target &T,
 
 extern "C" void LLVMInitializeXCoreDisassembler() {
   // Register the disassembler.
-  TargetRegistry::RegisterMCDisassembler(TheXCoreTarget,
+  TargetRegistry::RegisterMCDisassembler(getTheXCoreTarget(),
                                          createXCoreDisassembler);
 }

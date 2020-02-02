@@ -1,45 +1,52 @@
 //===-- llvm/CodeGen/MachineModuleInfo.cpp ----------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
 #include "llvm/CodeGen/MachineModuleInfo.h"
-#include "llvm/ADT/PointerUnion.h"
-#include "llvm/Analysis/LibCallSemantics.h"
-#include "llvm/Analysis/ValueTracking.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/PostOrderIterator.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/TinyPtrVector.h"
 #include "llvm/CodeGen/MachineFunction.h"
-#include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/Passes.h"
-#include "llvm/CodeGen/WinEHFuncInfo.h"
-#include "llvm/IR/Constants.h"
+#include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/DerivedTypes.h"
-#include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
-#include "llvm/MC/MCObjectFileInfo.h"
+#include "llvm/IR/Value.h"
+#include "llvm/IR/ValueHandle.h"
+#include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCSymbol.h"
-#include "llvm/Support/Dwarf.h"
+#include "llvm/Pass.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Target/TargetLoweringObjectFile.h"
+#include "llvm/Target/TargetMachine.h"
+#include <algorithm>
+#include <cassert>
+#include <memory>
+#include <utility>
+#include <vector>
+
 using namespace llvm;
 using namespace llvm::dwarf;
 
-// Handle the Pass registration stuff necessary to use DataLayout's.
-INITIALIZE_PASS(MachineModuleInfo, "machinemoduleinfo",
-                "Machine Module Information", false, false)
-char MachineModuleInfo::ID = 0;
-
 // Out of line virtual method.
-MachineModuleInfoImpl::~MachineModuleInfoImpl() {}
+MachineModuleInfoImpl::~MachineModuleInfoImpl() = default;
 
 namespace llvm {
-class MMIAddrLabelMapCallbackPtr : CallbackVH {
-  MMIAddrLabelMap *Map;
+
+class MMIAddrLabelMapCallbackPtr final : CallbackVH {
+  MMIAddrLabelMap *Map = nullptr;
+
 public:
-  MMIAddrLabelMapCallbackPtr() : Map(nullptr) {}
-  MMIAddrLabelMapCallbackPtr(Value *V) : CallbackVH(V), Map(nullptr) {}
+  MMIAddrLabelMapCallbackPtr() = default;
+  MMIAddrLabelMapCallbackPtr(Value *V) : CallbackVH(V) {}
 
   void setPtr(BasicBlock *BB) {
     ValueHandleBase::operator=(BB);
@@ -54,7 +61,7 @@ public:
 class MMIAddrLabelMap {
   MCContext &Context;
   struct AddrLabelSymEntry {
-    /// Symbols - The symbols for the label.
+    /// The symbols for the label.
     TinyPtrVector<MCSymbol *> Symbols;
 
     Function *Fn;   // The containing function of the BasicBlock.
@@ -63,19 +70,19 @@ class MMIAddrLabelMap {
 
   DenseMap<AssertingVH<BasicBlock>, AddrLabelSymEntry> AddrLabelSymbols;
 
-  /// BBCallbacks - Callbacks for the BasicBlock's that we have entries for.  We
-  /// use this so we get notified if a block is deleted or RAUWd.
+  /// Callbacks for the BasicBlock's that we have entries for.  We use this so
+  /// we get notified if a block is deleted or RAUWd.
   std::vector<MMIAddrLabelMapCallbackPtr> BBCallbacks;
 
-  /// DeletedAddrLabelsNeedingEmission - This is a per-function list of symbols
-  /// whose corresponding BasicBlock got deleted.  These symbols need to be
-  /// emitted at some point in the file, so AsmPrinter emits them after the
-  /// function body.
-  DenseMap<AssertingVH<Function>, std::vector<MCSymbol*> >
+  /// This is a per-function list of symbols whose corresponding BasicBlock got
+  /// deleted.  These symbols need to be emitted at some point in the file, so
+  /// AsmPrinter emits them after the function body.
+  DenseMap<AssertingVH<Function>, std::vector<MCSymbol*>>
     DeletedAddrLabelsNeedingEmission;
-public:
 
+public:
   MMIAddrLabelMap(MCContext &context) : Context(context) {}
+
   ~MMIAddrLabelMap() {
     assert(DeletedAddrLabelsNeedingEmission.empty() &&
            "Some labels for deleted blocks never got emitted");
@@ -89,7 +96,8 @@ public:
   void UpdateForDeletedBlock(BasicBlock *BB);
   void UpdateForRAUWBlock(BasicBlock *Old, BasicBlock *New);
 };
-}
+
+} // end namespace llvm
 
 ArrayRef<MCSymbol *> MMIAddrLabelMap::getAddrLabelSymbolToEmit(BasicBlock *BB) {
   assert(BB->hasAddressTaken() &&
@@ -108,15 +116,14 @@ ArrayRef<MCSymbol *> MMIAddrLabelMap::getAddrLabelSymbolToEmit(BasicBlock *BB) {
   BBCallbacks.back().setMap(this);
   Entry.Index = BBCallbacks.size() - 1;
   Entry.Fn = BB->getParent();
-  Entry.Symbols.push_back(Context.createTempSymbol());
+  Entry.Symbols.push_back(Context.createTempSymbol(!BB->hasAddressTaken()));
   return Entry.Symbols;
 }
 
-/// takeDeletedSymbolsForFunction - If we have any deleted symbols for F, return
-/// them.
+/// If we have any deleted symbols for F, return them.
 void MMIAddrLabelMap::
 takeDeletedSymbolsForFunction(Function *F, std::vector<MCSymbol*> &Result) {
-  DenseMap<AssertingVH<Function>, std::vector<MCSymbol*> >::iterator I =
+  DenseMap<AssertingVH<Function>, std::vector<MCSymbol*>>::iterator I =
     DeletedAddrLabelsNeedingEmission.find(F);
 
   // If there are no entries for the function, just return.
@@ -126,7 +133,6 @@ takeDeletedSymbolsForFunction(Function *F, std::vector<MCSymbol*> &Result) {
   std::swap(Result, I->second);
   DeletedAddrLabelsNeedingEmission.erase(I);
 }
-
 
 void MMIAddrLabelMap::UpdateForDeletedBlock(BasicBlock *BB) {
   // If the block got deleted, there is no need for the symbol.  If the symbol
@@ -174,7 +180,6 @@ void MMIAddrLabelMap::UpdateForRAUWBlock(BasicBlock *Old, BasicBlock *New) {
                           OldEntry.Symbols.end());
 }
 
-
 void MMIAddrLabelMapCallbackPtr::deleted() {
   Map->UpdateForDeletedBlock(cast<BasicBlock>(getValPtr()));
 }
@@ -183,44 +188,15 @@ void MMIAddrLabelMapCallbackPtr::allUsesReplacedWith(Value *V2) {
   Map->UpdateForRAUWBlock(cast<BasicBlock>(getValPtr()), cast<BasicBlock>(V2));
 }
 
-
-//===----------------------------------------------------------------------===//
-
-MachineModuleInfo::MachineModuleInfo(const MCAsmInfo &MAI,
-                                     const MCRegisterInfo &MRI,
-                                     const MCObjectFileInfo *MOFI)
-  : ImmutablePass(ID), Context(&MAI, &MRI, MOFI, nullptr, false) {
-  initializeMachineModuleInfoPass(*PassRegistry::getPassRegistry());
-}
-
-MachineModuleInfo::MachineModuleInfo()
-  : ImmutablePass(ID), Context(nullptr, nullptr, nullptr) {
-  llvm_unreachable("This MachineModuleInfo constructor should never be called, "
-                   "MMI should always be explicitly constructed by "
-                   "LLVMTargetMachine");
-}
-
-MachineModuleInfo::~MachineModuleInfo() {
-}
-
-bool MachineModuleInfo::doInitialization(Module &M) {
-
+void MachineModuleInfo::initialize() {
   ObjFileMMI = nullptr;
   CurCallSite = 0;
-  CallsEHReturn = false;
-  CallsUnwindInit = false;
-  DbgInfoAvailable = UsesVAFloatArgument = UsesMorestackAddr = false;
-  // Always emit some info, by default "no personality" info.
-  Personalities.push_back(nullptr);
-  PersonalityTypeCache = EHPersonality::Unknown;
+  UsesMSVCFloatingPoint = UsesMorestackAddr = false;
+  HasSplitStack = HasNosplitStack = false;
   AddrLabelSymbols = nullptr;
-  TheModule = nullptr;
-
-  return false;
 }
 
-bool MachineModuleInfo::doFinalization(Module &M) {
-
+void MachineModuleInfo::finalize() {
   Personalities.clear();
 
   delete AddrLabelSymbols;
@@ -230,33 +206,32 @@ bool MachineModuleInfo::doFinalization(Module &M) {
 
   delete ObjFileMMI;
   ObjFileMMI = nullptr;
-
-  return false;
 }
 
-/// EndFunction - Discard function meta information.
-///
-void MachineModuleInfo::EndFunction() {
-  // Clean up frame info.
-  FrameInstructions.clear();
-
-  // Clean up exception info.
-  LandingPads.clear();
-  PersonalityTypeCache = EHPersonality::Unknown;
-  CallSiteMap.clear();
-  TypeInfos.clear();
-  FilterIds.clear();
-  FilterEnds.clear();
-  CallsEHReturn = false;
-  CallsUnwindInit = false;
-  VariableDbgInfos.clear();
+MachineModuleInfo::MachineModuleInfo(MachineModuleInfo &&MMI)
+    : TM(std::move(MMI.TM)),
+      Context(MMI.TM.getMCAsmInfo(), MMI.TM.getMCRegisterInfo(),
+              MMI.TM.getObjFileLowering(), nullptr, nullptr, false) {
+  ObjFileMMI = MMI.ObjFileMMI;
+  CurCallSite = MMI.CurCallSite;
+  UsesMSVCFloatingPoint = MMI.UsesMSVCFloatingPoint;
+  UsesMorestackAddr = MMI.UsesMorestackAddr;
+  HasSplitStack = MMI.HasSplitStack;
+  HasNosplitStack = MMI.HasNosplitStack;
+  AddrLabelSymbols = MMI.AddrLabelSymbols;
+  TheModule = MMI.TheModule;
 }
+
+MachineModuleInfo::MachineModuleInfo(const LLVMTargetMachine *TM)
+    : TM(*TM), Context(TM->getMCAsmInfo(), TM->getMCRegisterInfo(),
+                       TM->getObjFileLowering(), nullptr, nullptr, false) {
+  initialize();
+}
+
+MachineModuleInfo::~MachineModuleInfo() { finalize(); }
 
 //===- Address of Block Management ----------------------------------------===//
 
-/// getAddrLabelSymbolToEmit - Return the symbol to be used for the specified
-/// basic block when its address is taken.  If other blocks were RAUW'd to
-/// this one, we may have to emit them as well, return the whole set.
 ArrayRef<MCSymbol *>
 MachineModuleInfo::getAddrLabelSymbolToEmit(const BasicBlock *BB) {
   // Lazily create AddrLabelSymbols.
@@ -265,11 +240,6 @@ MachineModuleInfo::getAddrLabelSymbolToEmit(const BasicBlock *BB) {
  return AddrLabelSymbols->getAddrLabelSymbolToEmit(const_cast<BasicBlock*>(BB));
 }
 
-
-/// takeDeletedSymbolsForFunction - If the specified function has had any
-/// references to address-taken blocks generated, but the block got deleted,
-/// return the symbol now so we can emit it.  This prevents emitting a
-/// reference to a symbol that has no definition.
 void MachineModuleInfo::
 takeDeletedSymbolsForFunction(const Function *F,
                               std::vector<MCSymbol*> &Result) {
@@ -279,258 +249,118 @@ takeDeletedSymbolsForFunction(const Function *F,
      takeDeletedSymbolsForFunction(const_cast<Function*>(F), Result);
 }
 
-//===- EH -----------------------------------------------------------------===//
-
-/// getOrCreateLandingPadInfo - Find or create an LandingPadInfo for the
-/// specified MachineBasicBlock.
-LandingPadInfo &MachineModuleInfo::getOrCreateLandingPadInfo
-    (MachineBasicBlock *LandingPad) {
-  unsigned N = LandingPads.size();
-  for (unsigned i = 0; i < N; ++i) {
-    LandingPadInfo &LP = LandingPads[i];
-    if (LP.LandingPadBlock == LandingPad)
-      return LP;
-  }
-
-  LandingPads.push_back(LandingPadInfo(LandingPad));
-  return LandingPads[N];
-}
-
-/// addInvoke - Provide the begin and end labels of an invoke style call and
-/// associate it with a try landing pad block.
-void MachineModuleInfo::addInvoke(MachineBasicBlock *LandingPad,
-                                  MCSymbol *BeginLabel, MCSymbol *EndLabel) {
-  LandingPadInfo &LP = getOrCreateLandingPadInfo(LandingPad);
-  LP.BeginLabels.push_back(BeginLabel);
-  LP.EndLabels.push_back(EndLabel);
-}
-
-/// addLandingPad - Provide the label of a try LandingPad block.
-///
-MCSymbol *MachineModuleInfo::addLandingPad(MachineBasicBlock *LandingPad) {
-  MCSymbol *LandingPadLabel = Context.createTempSymbol();
-  LandingPadInfo &LP = getOrCreateLandingPadInfo(LandingPad);
-  LP.LandingPadLabel = LandingPadLabel;
-  return LandingPadLabel;
-}
-
-/// addPersonality - Provide the personality function for the exception
-/// information.
-void MachineModuleInfo::addPersonality(MachineBasicBlock *LandingPad,
-                                       const Function *Personality) {
-  LandingPadInfo &LP = getOrCreateLandingPadInfo(LandingPad);
-  LP.Personality = Personality;
-  addPersonality(Personality);
-}
+/// \name Exception Handling
+/// \{
 
 void MachineModuleInfo::addPersonality(const Function *Personality) {
   for (unsigned i = 0; i < Personalities.size(); ++i)
     if (Personalities[i] == Personality)
       return;
-
-  // If this is the first personality we're adding go
-  // ahead and add it at the beginning.
-  if (!Personalities[0])
-    Personalities[0] = Personality;
-  else
-    Personalities.push_back(Personality);
+  Personalities.push_back(Personality);
 }
 
-void MachineModuleInfo::addWinEHState(MachineBasicBlock *LandingPad,
-                                      int State) {
-  LandingPadInfo &LP = getOrCreateLandingPadInfo(LandingPad);
-  LP.WinEHState = State;
+/// \}
+
+MachineFunction *
+MachineModuleInfo::getMachineFunction(const Function &F) const {
+  auto I = MachineFunctions.find(&F);
+  return I != MachineFunctions.end() ? I->second.get() : nullptr;
 }
 
-/// addCatchTypeInfo - Provide the catch typeinfo for a landing pad.
-///
-void MachineModuleInfo::
-addCatchTypeInfo(MachineBasicBlock *LandingPad,
-                 ArrayRef<const GlobalValue *> TyInfo) {
-  LandingPadInfo &LP = getOrCreateLandingPadInfo(LandingPad);
-  for (unsigned N = TyInfo.size(); N; --N)
-    LP.TypeIds.push_back(getTypeIDFor(TyInfo[N - 1]));
-}
+MachineFunction &
+MachineModuleInfo::getOrCreateMachineFunction(const Function &F) {
+  // Shortcut for the common case where a sequence of MachineFunctionPasses
+  // all query for the same Function.
+  if (LastRequest == &F)
+    return *LastResult;
 
-/// addFilterTypeInfo - Provide the filter typeinfo for a landing pad.
-///
-void MachineModuleInfo::
-addFilterTypeInfo(MachineBasicBlock *LandingPad,
-                  ArrayRef<const GlobalValue *> TyInfo) {
-  LandingPadInfo &LP = getOrCreateLandingPadInfo(LandingPad);
-  std::vector<unsigned> IdsInFilter(TyInfo.size());
-  for (unsigned I = 0, E = TyInfo.size(); I != E; ++I)
-    IdsInFilter[I] = getTypeIDFor(TyInfo[I]);
-  LP.TypeIds.push_back(getFilterIDFor(IdsInFilter));
-}
-
-/// addCleanup - Add a cleanup action for a landing pad.
-///
-void MachineModuleInfo::addCleanup(MachineBasicBlock *LandingPad) {
-  LandingPadInfo &LP = getOrCreateLandingPadInfo(LandingPad);
-  LP.TypeIds.push_back(0);
-}
-
-void MachineModuleInfo::addSEHCatchHandler(MachineBasicBlock *LandingPad,
-                                           const Function *Filter,
-                                           const BlockAddress *RecoverBA) {
-  LandingPadInfo &LP = getOrCreateLandingPadInfo(LandingPad);
-  SEHHandler Handler;
-  Handler.FilterOrFinally = Filter;
-  Handler.RecoverBA = RecoverBA;
-  LP.SEHHandlers.push_back(Handler);
-}
-
-void MachineModuleInfo::addSEHCleanupHandler(MachineBasicBlock *LandingPad,
-                                             const Function *Cleanup) {
-  LandingPadInfo &LP = getOrCreateLandingPadInfo(LandingPad);
-  SEHHandler Handler;
-  Handler.FilterOrFinally = Cleanup;
-  Handler.RecoverBA = nullptr;
-  LP.SEHHandlers.push_back(Handler);
-}
-
-/// TidyLandingPads - Remap landing pad labels and remove any deleted landing
-/// pads.
-void MachineModuleInfo::TidyLandingPads(DenseMap<MCSymbol*, uintptr_t> *LPMap) {
-  for (unsigned i = 0; i != LandingPads.size(); ) {
-    LandingPadInfo &LandingPad = LandingPads[i];
-    if (LandingPad.LandingPadLabel &&
-        !LandingPad.LandingPadLabel->isDefined() &&
-        (!LPMap || (*LPMap)[LandingPad.LandingPadLabel] == 0))
-      LandingPad.LandingPadLabel = nullptr;
-
-    // Special case: we *should* emit LPs with null LP MBB. This indicates
-    // "nounwind" case.
-    if (!LandingPad.LandingPadLabel && LandingPad.LandingPadBlock) {
-      LandingPads.erase(LandingPads.begin() + i);
-      continue;
-    }
-
-    for (unsigned j = 0, e = LandingPads[i].BeginLabels.size(); j != e; ++j) {
-      MCSymbol *BeginLabel = LandingPad.BeginLabels[j];
-      MCSymbol *EndLabel = LandingPad.EndLabels[j];
-      if ((BeginLabel->isDefined() ||
-           (LPMap && (*LPMap)[BeginLabel] != 0)) &&
-          (EndLabel->isDefined() ||
-           (LPMap && (*LPMap)[EndLabel] != 0))) continue;
-
-      LandingPad.BeginLabels.erase(LandingPad.BeginLabels.begin() + j);
-      LandingPad.EndLabels.erase(LandingPad.EndLabels.begin() + j);
-      --j, --e;
-    }
-
-    // Remove landing pads with no try-ranges.
-    if (LandingPads[i].BeginLabels.empty()) {
-      LandingPads.erase(LandingPads.begin() + i);
-      continue;
-    }
-
-    // If there is no landing pad, ensure that the list of typeids is empty.
-    // If the only typeid is a cleanup, this is the same as having no typeids.
-    if (!LandingPad.LandingPadBlock ||
-        (LandingPad.TypeIds.size() == 1 && !LandingPad.TypeIds[0]))
-      LandingPad.TypeIds.clear();
-    ++i;
-  }
-}
-
-/// setCallSiteLandingPad - Map the landing pad's EH symbol to the call site
-/// indexes.
-void MachineModuleInfo::setCallSiteLandingPad(MCSymbol *Sym,
-                                              ArrayRef<unsigned> Sites) {
-  LPadToCallSiteMap[Sym].append(Sites.begin(), Sites.end());
-}
-
-/// getTypeIDFor - Return the type id for the specified typeinfo.  This is
-/// function wide.
-unsigned MachineModuleInfo::getTypeIDFor(const GlobalValue *TI) {
-  for (unsigned i = 0, N = TypeInfos.size(); i != N; ++i)
-    if (TypeInfos[i] == TI) return i + 1;
-
-  TypeInfos.push_back(TI);
-  return TypeInfos.size();
-}
-
-/// getFilterIDFor - Return the filter id for the specified typeinfos.  This is
-/// function wide.
-int MachineModuleInfo::getFilterIDFor(std::vector<unsigned> &TyIds) {
-  // If the new filter coincides with the tail of an existing filter, then
-  // re-use the existing filter.  Folding filters more than this requires
-  // re-ordering filters and/or their elements - probably not worth it.
-  for (std::vector<unsigned>::iterator I = FilterEnds.begin(),
-       E = FilterEnds.end(); I != E; ++I) {
-    unsigned i = *I, j = TyIds.size();
-
-    while (i && j)
-      if (FilterIds[--i] != TyIds[--j])
-        goto try_next;
-
-    if (!j)
-      // The new filter coincides with range [i, end) of the existing filter.
-      return -(1 + i);
-
-try_next:;
+  auto I = MachineFunctions.insert(
+      std::make_pair(&F, std::unique_ptr<MachineFunction>()));
+  MachineFunction *MF;
+  if (I.second) {
+    // No pre-existing machine function, create a new one.
+    const TargetSubtargetInfo &STI = *TM.getSubtargetImpl(F);
+    MF = new MachineFunction(F, TM, STI, NextFnNum++, *this);
+    // Update the set entry.
+    I.first->second.reset(MF);
+  } else {
+    MF = I.first->second.get();
   }
 
-  // Add the new filter.
-  int FilterID = -(1 + FilterIds.size());
-  FilterIds.reserve(FilterIds.size() + TyIds.size() + 1);
-  FilterIds.insert(FilterIds.end(), TyIds.begin(), TyIds.end());
-  FilterEnds.push_back(FilterIds.size());
-  FilterIds.push_back(0); // terminator
-  return FilterID;
+  LastRequest = &F;
+  LastResult = MF;
+  return *MF;
 }
 
-/// getPersonality - Return the personality function for the current function.
-const Function *MachineModuleInfo::getPersonality() const {
-  for (const LandingPadInfo &LPI : LandingPads)
-    if (LPI.Personality)
-      return LPI.Personality;
-  return nullptr;
+void MachineModuleInfo::deleteMachineFunctionFor(Function &F) {
+  MachineFunctions.erase(&F);
+  LastRequest = nullptr;
+  LastResult = nullptr;
 }
 
-EHPersonality MachineModuleInfo::getPersonalityType() {
-  if (PersonalityTypeCache == EHPersonality::Unknown) {
-    if (const Function *F = getPersonality())
-      PersonalityTypeCache = classifyEHPersonality(F);
-  }
-  return PersonalityTypeCache;
-}
+namespace {
 
-/// getPersonalityIndex - Return unique index for current personality
-/// function. NULL/first personality function should always get zero index.
-unsigned MachineModuleInfo::getPersonalityIndex() const {
-  const Function* Personality = nullptr;
+/// This pass frees the MachineFunction object associated with a Function.
+class FreeMachineFunction : public FunctionPass {
+public:
+  static char ID;
 
-  // Scan landing pads. If there is at least one non-NULL personality - use it.
-  for (unsigned i = 0, e = LandingPads.size(); i != e; ++i)
-    if (LandingPads[i].Personality) {
-      Personality = LandingPads[i].Personality;
-      break;
-    }
+  FreeMachineFunction() : FunctionPass(ID) {}
 
-  for (unsigned i = 0, e = Personalities.size(); i < e; ++i) {
-    if (Personalities[i] == Personality)
-      return i;
+  void getAnalysisUsage(AnalysisUsage &AU) const override {
+    AU.addRequired<MachineModuleInfoWrapperPass>();
+    AU.addPreserved<MachineModuleInfoWrapperPass>();
   }
 
-  // This will happen if the current personality function is
-  // in the zero index.
-  return 0;
+  bool runOnFunction(Function &F) override {
+    MachineModuleInfo &MMI =
+        getAnalysis<MachineModuleInfoWrapperPass>().getMMI();
+    MMI.deleteMachineFunctionFor(F);
+    return true;
+  }
+
+  StringRef getPassName() const override {
+    return "Free MachineFunction";
+  }
+};
+
+} // end anonymous namespace
+
+char FreeMachineFunction::ID;
+
+FunctionPass *llvm::createFreeMachineFunctionPass() {
+  return new FreeMachineFunction();
 }
 
-const Function *MachineModuleInfo::getWinEHParent(const Function *F) const {
-  StringRef WinEHParentName =
-      F->getFnAttribute("wineh-parent").getValueAsString();
-  if (WinEHParentName.empty() || WinEHParentName == F->getName())
-    return F;
-  return F->getParent()->getFunction(WinEHParentName);
+MachineModuleInfoWrapperPass::MachineModuleInfoWrapperPass(
+    const LLVMTargetMachine *TM)
+    : ImmutablePass(ID), MMI(TM) {
+  initializeMachineModuleInfoWrapperPassPass(*PassRegistry::getPassRegistry());
 }
 
-WinEHFuncInfo &MachineModuleInfo::getWinEHFuncInfo(const Function *F) {
-  auto &Ptr = FuncInfoMap[getWinEHParent(F)];
-  if (!Ptr)
-    Ptr.reset(new WinEHFuncInfo);
-  return *Ptr;
+// Handle the Pass registration stuff necessary to use DataLayout's.
+INITIALIZE_PASS(MachineModuleInfoWrapperPass, "machinemoduleinfo",
+                "Machine Module Information", false, false)
+char MachineModuleInfoWrapperPass::ID = 0;
+
+bool MachineModuleInfoWrapperPass::doInitialization(Module &M) {
+  MMI.initialize();
+  MMI.TheModule = &M;
+  MMI.DbgInfoAvailable = !M.debug_compile_units().empty();
+  return false;
+}
+
+bool MachineModuleInfoWrapperPass::doFinalization(Module &M) {
+  MMI.finalize();
+  return false;
+}
+
+AnalysisKey MachineModuleAnalysis::Key;
+
+MachineModuleInfo MachineModuleAnalysis::run(Module &M,
+                                             ModuleAnalysisManager &) {
+  MachineModuleInfo MMI(TM);
+  MMI.TheModule = &M;
+  MMI.DbgInfoAvailable = !M.debug_compile_units().empty();
+  return MMI;
 }

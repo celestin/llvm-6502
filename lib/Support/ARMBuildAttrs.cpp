@@ -1,21 +1,20 @@
 //===-- ARMBuildAttrs.cpp - ARM Build Attributes --------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/Support/ARMBuildAttributes.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/ARMBuildAttributes.h"
 
 using namespace llvm;
 
 namespace {
 const struct {
   ARMBuildAttrs::AttrType Attr;
-  const char *TagName;
+  StringRef TagName;
 } ARMAttributeTags[] = {
   { ARMBuildAttrs::File, "Tag_File" },
   { ARMBuildAttrs::Section, "Tag_Section" },
@@ -29,6 +28,7 @@ const struct {
   { ARMBuildAttrs::FP_arch, "Tag_FP_arch" },
   { ARMBuildAttrs::WMMX_arch, "Tag_WMMX_arch" },
   { ARMBuildAttrs::Advanced_SIMD_arch, "Tag_Advanced_SIMD_arch" },
+  { ARMBuildAttrs::MVE_arch, "Tag_MVE_arch" },
   { ARMBuildAttrs::PCS_config, "Tag_PCS_config" },
   { ARMBuildAttrs::ABI_PCS_R9_use, "Tag_ABI_PCS_R9_use" },
   { ARMBuildAttrs::ABI_PCS_RW_data, "Tag_ABI_PCS_RW_data" },
@@ -54,6 +54,7 @@ const struct {
   { ARMBuildAttrs::ABI_FP_16bit_format, "Tag_ABI_FP_16bit_format" },
   { ARMBuildAttrs::MPextension_use, "Tag_MPextension_use" },
   { ARMBuildAttrs::DIV_use, "Tag_DIV_use" },
+  { ARMBuildAttrs::DSP_extension, "Tag_DSP_extension" },
   { ARMBuildAttrs::nodefaults, "Tag_nodefaults" },
   { ARMBuildAttrs::also_compatible_with, "Tag_also_compatible_with" },
   { ARMBuildAttrs::T2EE_use, "Tag_T2EE_use" },
@@ -77,17 +78,23 @@ StringRef AttrTypeAsString(unsigned Attr, bool HasTagPrefix) {
 StringRef AttrTypeAsString(AttrType Attr, bool HasTagPrefix) {
   for (unsigned TI = 0, TE = sizeof(ARMAttributeTags) / sizeof(*ARMAttributeTags);
        TI != TE; ++TI)
-    if (ARMAttributeTags[TI].Attr == Attr)
-      return ARMAttributeTags[TI].TagName + (HasTagPrefix ? 0 : 4);
+    if (ARMAttributeTags[TI].Attr == Attr) {
+      auto TagName = ARMAttributeTags[TI].TagName;
+      return HasTagPrefix ? TagName : TagName.drop_front(4);
+    }
   return "";
 }
 
 int AttrTypeFromString(StringRef Tag) {
   bool HasTagPrefix = Tag.startswith("Tag_");
-  for (unsigned TI = 0, TE = sizeof(ARMAttributeTags) / sizeof(*ARMAttributeTags);
-       TI != TE; ++TI)
-    if (StringRef(ARMAttributeTags[TI].TagName + (HasTagPrefix ? 0 : 4)) == Tag)
+  for (unsigned TI = 0,
+                TE = sizeof(ARMAttributeTags) / sizeof(*ARMAttributeTags);
+       TI != TE; ++TI) {
+    auto TagName = ARMAttributeTags[TI].TagName;
+    if (TagName.drop_front(HasTagPrefix ? 0 : 4) == Tag) {
       return ARMAttributeTags[TI].Attr;
+    }
+  }
   return -1;
 }
 }

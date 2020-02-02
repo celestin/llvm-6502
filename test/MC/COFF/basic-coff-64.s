@@ -1,7 +1,7 @@
 // This test checks that the COFF object emitter works for the most basic
 // programs.
 
-// RUN: llvm-mc -filetype=obj -triple x86_64-pc-win32 %s | llvm-readobj -h -s -sr -sd -t | FileCheck %s
+// RUN: llvm-mc -filetype=obj -triple x86_64-pc-win32 %s | llvm-readobj -h -S --sr --sd --symbols | FileCheck %s
 
 .def	 _main;
 	.scl	2;
@@ -11,7 +11,7 @@
 	.globl	_main
 	.align	16, 0x90
 _main:                                  # @main
-# BB#0:                                 # %entry
+# %bb.0:                                # %entry
 	subl	$4, %esp
 	movl	$.L_.str, (%esp)
 	call	_printf
@@ -93,7 +93,7 @@ _main:                                  # @main
 // CHECK:       Length: [[TextSize]]
 // CHECK:       RelocationCount: 2
 // CHECK:       LineNumberCount: 0
-// CHECK:       Checksum: 0x0
+// CHECK:       Checksum: 0x8E1B6D20
 // CHECK:       Number: [[TextNum]]
 // CHECK:       Selection: 0x0
 // CHECK:     }
@@ -110,7 +110,7 @@ _main:                                  # @main
 // CHECK:       Length: [[DataSize]]
 // CHECK:       RelocationCount: 0
 // CHECK:       LineNumberCount: 0
-// CHECK:       Checksum: 0x0
+// CHECK:       Checksum: 0x2B95CA92
 // CHECK:       Number: [[DataNum]]
 // CHECK:       Selection: 0x0
 // CHECK:     }

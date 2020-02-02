@@ -1,9 +1,8 @@
 //===- DIASourceFile.h - DIA implementation of IPDBSourceFile ---*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -14,6 +13,7 @@
 #include "llvm/DebugInfo/PDB/IPDBSourceFile.h"
 
 namespace llvm {
+namespace pdb {
 class DIASession;
 
 class DIASourceFile : public IPDBSourceFile {
@@ -25,12 +25,16 @@ public:
   uint32_t getUniqueId() const override;
   std::string getChecksum() const override;
   PDB_Checksum getChecksumType() const override;
-  std::unique_ptr<IPDBEnumSymbols> getCompilands() const override;
+  std::unique_ptr<IPDBEnumChildren<PDBSymbolCompiland>>
+  getCompilands() const override;
+
+  CComPtr<IDiaSourceFile> getDiaFile() const { return SourceFile; }
 
 private:
   const DIASession &Session;
   CComPtr<IDiaSourceFile> SourceFile;
 };
+}
 }
 
 #endif

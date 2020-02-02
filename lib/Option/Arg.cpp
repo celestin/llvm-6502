@@ -1,17 +1,18 @@
-//===--- Arg.cpp - Argument Implementations -------------------------------===//
+//===- Arg.cpp - Argument Implementations ---------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/Option/Arg.h"
 #include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/Twine.h"
+#include "llvm/Config/llvm-config.h"
+#include "llvm/Option/Arg.h"
 #include "llvm/Option/ArgList.h"
 #include "llvm/Option/Option.h"
+#include "llvm/Support/Compiler.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace llvm;
@@ -43,26 +44,33 @@ Arg::~Arg() {
   }
 }
 
-void Arg::dump() const {
-  llvm::errs() << "<";
+void Arg::print(raw_ostream& O) const {
+  O << "<";
 
-  llvm::errs() << " Opt:";
-  Opt.dump();
+  O << " Opt:";
+  Opt.print(O);
 
-  llvm::errs() << " Index:" << Index;
+  O << " Index:" << Index;
 
-  llvm::errs() << " Values: [";
+  O << " Values: [";
   for (unsigned i = 0, e = Values.size(); i != e; ++i) {
-    if (i) llvm::errs() << ", ";
-    llvm::errs() << "'" << Values[i] << "'";
+    if (i) O << ", ";
+    O << "'" << Values[i] << "'";
   }
 
-  llvm::errs() << "]>\n";
+  O << "]>\n";
 }
 
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
+LLVM_DUMP_METHOD void Arg::dump() const { print(dbgs()); }
+#endif
+
 std::string Arg::getAsString(const ArgList &Args) const {
+  if (Alias)
+    return Alias->getAsString(Args);
+
   SmallString<256> Res;
-  llvm::raw_svector_ostream OS(Res);
+  raw_svector_ostream OS(Res);
 
   ArgStringList ASL;
   render(Args, ASL);
@@ -93,7 +101,7 @@ void Arg::render(const ArgList &Args, ArgStringList &Output) const {
 
   case Option::RenderCommaJoinedStyle: {
     SmallString<256> Res;
-    llvm::raw_svector_ostream OS(Res);
+    raw_svector_ostream OS(Res);
     OS << getSpelling();
     for (unsigned i = 0, e = getNumValues(); i != e; ++i) {
       if (i) OS << ',';

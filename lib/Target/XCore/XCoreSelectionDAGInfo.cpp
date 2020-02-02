@@ -1,9 +1,8 @@
 //===-- XCoreSelectionDAGInfo.cpp - XCore SelectionDAG Info ---------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -16,14 +15,11 @@ using namespace llvm;
 
 #define DEBUG_TYPE "xcore-selectiondag-info"
 
-SDValue XCoreSelectionDAGInfo::
-EmitTargetCodeForMemcpy(SelectionDAG &DAG, SDLoc dl, SDValue Chain,
-                        SDValue Dst, SDValue Src, SDValue Size, unsigned Align,
-                        bool isVolatile, bool AlwaysInline,
-                        MachinePointerInfo DstPtrInfo,
-                        MachinePointerInfo SrcPtrInfo) const
-{
-  unsigned SizeBitWidth = Size.getValueType().getSizeInBits();
+SDValue XCoreSelectionDAGInfo::EmitTargetCodeForMemcpy(
+    SelectionDAG &DAG, const SDLoc &dl, SDValue Chain, SDValue Dst, SDValue Src,
+    SDValue Size, unsigned Align, bool isVolatile, bool AlwaysInline,
+    MachinePointerInfo DstPtrInfo, MachinePointerInfo SrcPtrInfo) const {
+  unsigned SizeBitWidth = Size.getValueSizeInBits();
   // Call __memcpy_4 if the src, dst and size are all 4 byte aligned.
   if (!AlwaysInline && (Align & 3) == 0 &&
       DAG.MaskedValueIsZero(Size, APInt(SizeBitWidth, 3))) {
@@ -38,11 +34,11 @@ EmitTargetCodeForMemcpy(SelectionDAG &DAG, SDLoc dl, SDValue Chain,
     TargetLowering::CallLoweringInfo CLI(DAG);
     CLI.setDebugLoc(dl)
         .setChain(Chain)
-        .setCallee(TLI.getLibcallCallingConv(RTLIB::MEMCPY),
-                   Type::getVoidTy(*DAG.getContext()),
-                   DAG.getExternalSymbol("__memcpy_4",
-                                         TLI.getPointerTy(DAG.getDataLayout())),
-                   std::move(Args), 0)
+        .setLibCallee(TLI.getLibcallCallingConv(RTLIB::MEMCPY),
+                      Type::getVoidTy(*DAG.getContext()),
+                      DAG.getExternalSymbol(
+                          "__memcpy_4", TLI.getPointerTy(DAG.getDataLayout())),
+                      std::move(Args))
         .setDiscardResult();
 
     std::pair<SDValue,SDValue> CallResult = TLI.LowerCallTo(CLI);

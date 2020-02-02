@@ -1,4 +1,4 @@
-; RUN: llc -verify-machineinstrs -o - %s -mtriple=arm64-apple-ios7.0 -aarch64-atomic-cfg-tidy=0 | FileCheck %s
+; RUN: llc -verify-machineinstrs -o - %s -mtriple=arm64-apple-ios7.0 -aarch64-enable-atomic-cfg-tidy=0 | FileCheck %s
 
 ; We've got the usual issues with LLVM reordering blocks here. The
 ; tests are correct for the current order, but who knows when that
@@ -36,13 +36,13 @@ test3:
 ; CHECK: tbz {{[wx][0-9]+}}, #12, [[LBL_end1]]
 
 end2:
-; CHECK: {{movz x0, #1|orr w0, wzr, #0x1}}
+; CHECK: mov w0, #1
 ; CHECK-NEXT: ret
   ret i32 1
 
 end1:
 ; CHECK: [[LBL_end1]]:
-; CHECK-NEXT: {{mov x0, xzr|mov w0, wzr}}
+; CHECK-NEXT: mov w0, wzr
 ; CHECK-NEXT: ret
   ret i32 0
 }

@@ -1,9 +1,8 @@
 //===-- X86TargetObjectFile.h - X86 Object Info -----------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -19,29 +18,46 @@ namespace llvm {
   /// x86-64.
   class X86_64MachoTargetObjectFile : public TargetLoweringObjectFileMachO {
   public:
-    const MCExpr *
-    getTTypeGlobalReference(const GlobalValue *GV, unsigned Encoding,
-                            Mangler &Mang, const TargetMachine &TM,
-                            MachineModuleInfo *MMI,
-                            MCStreamer &Streamer) const override;
+    const MCExpr *getTTypeGlobalReference(const GlobalValue *GV,
+                                          unsigned Encoding,
+                                          const TargetMachine &TM,
+                                          MachineModuleInfo *MMI,
+                                          MCStreamer &Streamer) const override;
 
     // getCFIPersonalitySymbol - The symbol that gets passed to
     // .cfi_personality.
-    MCSymbol *getCFIPersonalitySymbol(const GlobalValue *GV, Mangler &Mang,
+    MCSymbol *getCFIPersonalitySymbol(const GlobalValue *GV,
                                       const TargetMachine &TM,
                                       MachineModuleInfo *MMI) const override;
 
-    const MCExpr *getIndirectSymViaGOTPCRel(const MCSymbol *Sym,
+    const MCExpr *getIndirectSymViaGOTPCRel(const GlobalValue *GV,
+                                            const MCSymbol *Sym,
                                             const MCValue &MV, int64_t Offset,
                                             MachineModuleInfo *MMI,
                                             MCStreamer &Streamer) const override;
   };
 
-  /// \brief This implemenatation is used for X86 ELF targets that don't
+  /// This implemenatation is used for X86 ELF targets that don't
   /// have a further specialization.
   class X86ELFTargetObjectFile : public TargetLoweringObjectFileELF {
-    /// \brief Describe a TLS variable address within debug info.
+  public:
+    X86ELFTargetObjectFile() {
+      PLTRelativeVariantKind = MCSymbolRefExpr::VK_PLT;
+    }
+
+    /// Describe a TLS variable address within debug info.
     const MCExpr *getDebugThreadLocalSymbol(const MCSymbol *Sym) const override;
+  };
+
+  /// X86FreeBSDTargetObjectFile - This implementation is used for FreeBSD
+  /// on x86 and x86-64.
+  class X86FreeBSDTargetObjectFile : public X86ELFTargetObjectFile {
+    void Initialize(MCContext &Ctx, const TargetMachine &TM) override;
+  };
+
+  /// This implementation is used for Fuchsia on x86-64.
+  class X86FuchsiaTargetObjectFile : public X86ELFTargetObjectFile {
+    void Initialize(MCContext &Ctx, const TargetMachine &TM) override;
   };
 
   /// X86LinuxNaClTargetObjectFile - This implementation is used for linux and
@@ -50,16 +66,9 @@ namespace llvm {
     void Initialize(MCContext &Ctx, const TargetMachine &TM) override;
   };
 
-  /// \brief This implementation is used for Windows targets on x86 and x86-64.
-  class X86WindowsTargetObjectFile : public TargetLoweringObjectFileCOFF {
-    const MCExpr *
-    getExecutableRelativeSymbol(const ConstantExpr *CE, Mangler &Mang,
-                                const TargetMachine &TM) const override;
-
-    /// \brief Given a mergeable constant with the specified size and relocation
-    /// information, return a section that it should be placed in.
-    MCSection *getSectionForConstant(const DataLayout &DL, SectionKind Kind,
-                                     const Constant *C) const override;
+  /// This implementation is used for Solaris on x86/x86-64.
+  class X86SolarisTargetObjectFile : public X86ELFTargetObjectFile {
+    void Initialize(MCContext &Ctx, const TargetMachine &TM) override;
   };
 
 } // end namespace llvm

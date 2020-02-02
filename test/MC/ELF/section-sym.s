@@ -1,4 +1,4 @@
-// RUN: llvm-mc -filetype=obj -triple x86_64-pc-linux-gnu %s -o - | llvm-readobj -s -t -r --expand-relocs | FileCheck %s
+// RUN: llvm-mc -filetype=obj -triple x86_64-pc-linux-gnu %s -o - | llvm-readobj -S --symbols -r --expand-relocs | FileCheck %s
 
 .section foo, "aG", @progbits, f1, comdat
 .section foo, "G", @progbits, f2, comdat
@@ -9,8 +9,8 @@
 
 // The first seciton foo has index 6
 // CHECK:      Section {
-// CHECK:        Index:   6
-// CHECK-NEXT:   Name:    foo (28)
+// CHECK:        Index:   4
+// CHECK-NEXT:   Name:    foo
 // CHECK-NEXT:   Type:    SHT_PROGBITS (0x1)
 // CHECK-NEXT:   Flags [ (0x202)
 // CHECK-NEXT:     SHF_ALLOC (0x2)
@@ -25,8 +25,8 @@
 // CHECK-NEXT:   EntrySize:       0
 // CHECK-NEXT: }
 // CHECK:      Section {
-// CHECK:        Index:   8
-// CHECK-NEXT:   Name:    foo (28)
+// CHECK:        Index:   6
+// CHECK-NEXT:   Name:    foo
 // CHECK-NEXT:   Type:    SHT_PROGBITS (0x1)
 // CHECK-NEXT:   Flags [ (0x200)
 // CHECK-NEXT:     SHF_GROUP (0x200)
@@ -64,30 +64,30 @@
 // CHECK-NEXT:    Section: Undefined (0x0)
 // CHECK-NEXT:  }
 // CHECK-NEXT:  Symbol {
-// CHECK-NEXT:    Name: f1 (57)
+// CHECK-NEXT:    Name: f1
 // CHECK-NEXT:    Value: 0x0
 // CHECK-NEXT:    Size: 0
 // CHECK-NEXT:    Binding: Local (0x0)
 // CHECK-NEXT:    Type: None (0x0)
 // CHECK-NEXT:    Other: 0
-// CHECK-NEXT:    Section: .group (0x5)
+// CHECK-NEXT:    Section: .group
 // CHECK-NEXT:  }
 // CHECK-NEXT:  Symbol {
-// CHECK-NEXT:    Name: f2 (54)
+// CHECK-NEXT:    Name: f2
 // CHECK-NEXT:    Value: 0x0
 // CHECK-NEXT:    Size: 0
 // CHECK-NEXT:    Binding: Local (0x0)
 // CHECK-NEXT:    Type: None (0x0)
 // CHECK-NEXT:    Other: 0
-// CHECK-NEXT:    Section: .group (0x7)
+// CHECK-NEXT:    Section: .group
 // CHECK-NEXT:  }
 // CHECK-NEXT:  Symbol {
-// CHECK-NEXT:    Name:  (0)
+// CHECK-NEXT:    Name:  foo (0)
 // CHECK-NEXT:    Value: 0x0
 // CHECK-NEXT:    Size: 0
 // CHECK-NEXT:    Binding: Local (0x0)
 // CHECK-NEXT:    Type: Section (0x3)
 // CHECK-NEXT:    Other: 0
-// CHECK-NEXT:    Section: foo (0x6)
+// CHECK-NEXT:    Section: foo (0x4)
 // CHECK-NEXT:  }
 // CHECK-NEXT: ]

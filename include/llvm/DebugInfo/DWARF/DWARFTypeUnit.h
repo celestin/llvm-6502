@@ -1,38 +1,46 @@
-//===-- DWARFTypeUnit.h -----------------------------------------*- C++ -*-===//
+//===- DWARFTypeUnit.h ------------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIB_DEBUGINFO_DWARFTYPEUNIT_H
-#define LLVM_LIB_DEBUGINFO_DWARFTYPEUNIT_H
+#ifndef LLVM_DEBUGINFO_DWARF_DWARFTYPEUNIT_H
+#define LLVM_DEBUGINFO_DWARF_DWARFTYPEUNIT_H
 
+#include "llvm/ADT/StringRef.h"
 #include "llvm/DebugInfo/DWARF/DWARFUnit.h"
+#include "llvm/DebugInfo/DWARF/DWARFUnitIndex.h"
+#include "llvm/Support/DataExtractor.h"
+#include <cstdint>
 
 namespace llvm {
 
+class DWARFContext;
+class DWARFDebugAbbrev;
+struct DWARFSection;
+class raw_ostream;
+
 class DWARFTypeUnit : public DWARFUnit {
-private:
-  uint64_t TypeHash;
-  uint32_t TypeOffset;
 public:
   DWARFTypeUnit(DWARFContext &Context, const DWARFSection &Section,
-                const DWARFDebugAbbrev *DA, StringRef RS, StringRef SS,
-                StringRef SOS, StringRef AOS, bool LE,
-                const DWARFUnitSectionBase &UnitSection)
-      : DWARFUnit(Context, Section, DA, RS, SS, SOS, AOS, LE, UnitSection) {}
-  uint32_t getHeaderSize() const override {
-    return DWARFUnit::getHeaderSize() + 12;
-  }
-  void dump(raw_ostream &OS);
-protected:
-  bool extractImpl(DataExtractor debug_info, uint32_t *offset_ptr) override;
+                const DWARFUnitHeader &Header, const DWARFDebugAbbrev *DA,
+                const DWARFSection *RS, const DWARFSection *LocSection,
+                StringRef SS, const DWARFSection &SOS, const DWARFSection *AOS,
+                const DWARFSection &LS, bool LE, bool IsDWO,
+                const DWARFUnitVector &UnitVector)
+      : DWARFUnit(Context, Section, Header, DA, RS, LocSection, SS, SOS, AOS,
+                  LS, LE, IsDWO, UnitVector) {}
+
+  uint64_t getTypeHash() const { return getHeader().getTypeHash(); }
+  uint64_t getTypeOffset() const { return getHeader().getTypeOffset(); }
+
+  void dump(raw_ostream &OS, DIDumpOptions DumpOpts = {}) override;
+  // Enable LLVM-style RTTI.
+  static bool classof(const DWARFUnit *U) { return U->isTypeUnit(); }
 };
 
-}
+} // end namespace llvm
 
-#endif
-
+#endif // LLVM_DEBUGINFO_DWARF_DWARFTYPEUNIT_H

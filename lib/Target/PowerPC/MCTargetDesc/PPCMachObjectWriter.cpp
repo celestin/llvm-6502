@@ -1,15 +1,15 @@
 //===-- PPCMachObjectWriter.cpp - PPC Mach-O Writer -----------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
-#include "MCTargetDesc/PPCMCTargetDesc.h"
 #include "MCTargetDesc/PPCFixupKinds.h"
+#include "MCTargetDesc/PPCMCTargetDesc.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/BinaryFormat/MachO.h"
 #include "llvm/MC/MCAsmLayout.h"
 #include "llvm/MC/MCAssembler.h"
 #include "llvm/MC/MCContext.h"
@@ -18,7 +18,6 @@
 #include "llvm/MC/MCValue.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/Format.h"
-#include "llvm/Support/MachO.h"
 
 using namespace llvm;
 
@@ -79,7 +78,7 @@ static unsigned getFixupKindLog2Size(unsigned Kind) {
 }
 
 /// Translates generic PPC fixup kind to Mach-O/PPC relocation type enum.
-/// Outline based on PPCELFObjectWriter::GetRelocType().
+/// Outline based on PPCELFObjectWriter::getRelocType().
 static unsigned getRelocType(const MCValue &Target,
                              const MCFixupKind FixupKind, // from
                                                           // Fixup.getKind()
@@ -151,7 +150,7 @@ static void makeRelocationInfo(MachO::any_relocation_info &MRE,
   // The bitfield offsets that work (as determined by trial-and-error)
   // are different than what is documented in the mach-o manuals.
   // This appears to be an endianness issue; reversing the order of the
-  // documented bitfields in <llvm/Support/MachO.h> fixes this (but
+  // documented bitfields in <llvm/BinaryFormat/MachO.h> fixes this (but
   // breaks x86/ARM assembly).
   MRE.r_word1 = ((Index << 8) |    // was << 0
                  (IsPCRel << 7) |  // was << 24
@@ -179,7 +178,7 @@ static uint32_t getFixupOffset(const MCAsmLayout &Layout,
   uint32_t FixupOffset = Layout.getFragmentOffset(Fragment) + Fixup.getOffset();
   // On Mach-O, ppc_fixup_half16 relocations must refer to the
   // start of the instruction, not the second halfword, as ELF does
-  if (unsigned(Fixup.getKind()) == PPC::fixup_ppc_half16)
+  if (Fixup.getTargetKind() == PPC::fixup_ppc_half16)
     FixupOffset &= ~uint32_t(3);
   return FixupOffset;
 }
@@ -219,11 +218,11 @@ bool PPCMachObjectWriter::recordScatteredRelocation(
     const MCSymbol *SB = &B->getSymbol();
 
     if (!SB->getFragment())
-      report_fatal_error("symbol '" + B->getSymbol().getName() +
+      report_fatal_error("symbol '" + SB->getName() +
                          "' can not be undefined in a subtraction expression");
 
-    // FIXME: is Type correct? see include/llvm/Support/MachO.h
-    Value2 = Writer->getSymbolAddress(B->getSymbol(), Layout);
+    // FIXME: is Type correct? see include/llvm/BinaryFormat/MachO.h
+    Value2 = Writer->getSymbolAddress(*SB, Layout);
     FixedValue -= Writer->getSectionAddress(SB->getFragment()->getParent());
   }
   // FIXME: does FixedValue get used??
@@ -241,12 +240,12 @@ bool PPCMachObjectWriter::recordScatteredRelocation(
     if (FixupOffset > 0xffffff) {
       char Buffer[32];
       format("0x%x", FixupOffset).print(Buffer, sizeof(Buffer));
-      Asm.getContext().reportFatalError(Fixup.getLoc(),
+      Asm.getContext().reportError(Fixup.getLoc(),
                                   Twine("Section too large, can't encode "
                                         "r_address (") +
                                       Buffer + ") into 24 bits of scattered "
                                                "relocation entry.");
-      llvm_unreachable("fatal error returned?!");
+      return false;
     }
 
     // Is this supposed to follow MCTarget/PPCAsmBackend.cpp:adjustFixupValue()?
@@ -374,10 +373,8 @@ void PPCMachObjectWriter::RecordPPCRelocation(
   Writer->addRelocation(RelSymbol, Fragment->getParent(), MRE);
 }
 
-MCObjectWriter *llvm::createPPCMachObjectWriter(raw_pwrite_stream &OS,
-                                                bool Is64Bit, uint32_t CPUType,
-                                                uint32_t CPUSubtype) {
-  return createMachObjectWriter(
-      new PPCMachObjectWriter(Is64Bit, CPUType, CPUSubtype), OS,
-      /*IsLittleEndian=*/false);
+std::unique_ptr<MCObjectTargetWriter>
+llvm::createPPCMachObjectWriter(bool Is64Bit, uint32_t CPUType,
+                                uint32_t CPUSubtype) {
+  return std::make_unique<PPCMachObjectWriter>(Is64Bit, CPUType, CPUSubtype);
 }

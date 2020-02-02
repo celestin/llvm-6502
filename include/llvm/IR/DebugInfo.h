@@ -1,9 +1,8 @@
 //===- DebugInfo.h - Debug Information Helpers ------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -17,37 +16,21 @@
 #ifndef LLVM_IR_DEBUGINFO_H
 #define LLVM_IR_DEBUGINFO_H
 
-#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/IR/DebugInfoMetadata.h"
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/Dwarf.h"
-#include "llvm/Support/ErrorHandling.h"
-#include <iterator>
 
 namespace llvm {
-class Module;
+
 class DbgDeclareInst;
 class DbgValueInst;
+class Module;
 
-/// \brief Maps from type identifier to the actual MDNode.
-typedef DenseMap<const MDString *, DIType *> DITypeIdentifierMap;
-
-/// \brief Find subprogram that is enclosing this scope.
+/// Find subprogram that is enclosing this scope.
 DISubprogram *getDISubprogram(const MDNode *Scope);
 
-/// \brief Find debug info for a given function.
-///
-/// \returns a valid subprogram, if found. Otherwise, return \c nullptr.
-DISubprogram *getDISubprogram(const Function *F);
-
-/// \brief Generate map by visiting all retained types.
-DITypeIdentifierMap generateDITypeIdentifierMap(const NamedMDNode *CU_Nodes);
-
-/// \brief Strip debug info in the module if it exists.
+/// Strip debug info in the module if it exists.
 ///
 /// To do this, we remove all calls to the debugger intrinsics and any named
 /// metadata for debugging. We also remove debug locations for instructions.
@@ -55,10 +38,22 @@ DITypeIdentifierMap generateDITypeIdentifierMap(const NamedMDNode *CU_Nodes);
 bool StripDebugInfo(Module &M);
 bool stripDebugInfo(Function &F);
 
-/// \brief Return Debug Info Metadata Version by checking module flags.
+/// Downgrade the debug info in a module to contain only line table information.
+///
+/// In order to convert debug info to what -gline-tables-only would have
+/// created, this does the following:
+///   1) Delete all debug intrinsics.
+///   2) Delete all non-CU named metadata debug info nodes.
+///   3) Create new DebugLocs for each instruction.
+///   4) Create a new CU debug info, and similarly for every metadata node
+///      that's reachable from the CU debug info.
+///   All debug type metadata nodes are unreachable and garbage collected.
+bool stripNonLineTableDebugInfo(Module &M);
+
+/// Return Debug Info Metadata Version by checking module flags.
 unsigned getDebugMetadataVersionFromModule(const Module &M);
 
-/// \brief Utility to find all debug info in a module.
+/// Utility to find all debug info in a module.
 ///
 /// DebugInfoFinder tries to list all debug info MDNodes used in a module. To
 /// list debug info MDNodes used by an instruction, DebugInfoFinder uses
@@ -68,60 +63,61 @@ unsigned getDebugMetadataVersionFromModule(const Module &M);
 /// used by the CUs.
 class DebugInfoFinder {
 public:
-  DebugInfoFinder() : TypeMapInitialized(false) {}
-
-  /// \brief Process entire module and collect debug info anchors.
+  /// Process entire module and collect debug info anchors.
   void processModule(const Module &M);
+  /// Process a single instruction and collect debug info anchors.
+  void processInstruction(const Module &M, const Instruction &I);
 
-  /// \brief Process DbgDeclareInst.
+  /// Process DbgDeclareInst.
   void processDeclare(const Module &M, const DbgDeclareInst *DDI);
-  /// \brief Process DbgValueInst.
+  /// Process DbgValueInst.
   void processValue(const Module &M, const DbgValueInst *DVI);
-  /// \brief Process debug info location.
+  /// Process debug info location.
   void processLocation(const Module &M, const DILocation *Loc);
 
-  /// \brief Clear all lists.
+  /// Clear all lists.
   void reset();
 
 private:
   void InitializeTypeMap(const Module &M);
 
-  void processType(DIType *DT);
-  void processSubprogram(DISubprogram *SP);
+  void processCompileUnit(DICompileUnit *CU);
   void processScope(DIScope *Scope);
+  void processSubprogram(DISubprogram *SP);
+  void processType(DIType *DT);
   bool addCompileUnit(DICompileUnit *CU);
-  bool addGlobalVariable(DIGlobalVariable *DIG);
+  bool addGlobalVariable(DIGlobalVariableExpression *DIG);
+  bool addScope(DIScope *Scope);
   bool addSubprogram(DISubprogram *SP);
   bool addType(DIType *DT);
-  bool addScope(DIScope *Scope);
 
 public:
-  typedef SmallVectorImpl<DICompileUnit *>::const_iterator
-      compile_unit_iterator;
-  typedef SmallVectorImpl<DISubprogram *>::const_iterator subprogram_iterator;
-  typedef SmallVectorImpl<DIGlobalVariable *>::const_iterator
-      global_variable_iterator;
-  typedef SmallVectorImpl<DIType *>::const_iterator type_iterator;
-  typedef SmallVectorImpl<DIScope *>::const_iterator scope_iterator;
+  using compile_unit_iterator =
+      SmallVectorImpl<DICompileUnit *>::const_iterator;
+  using subprogram_iterator = SmallVectorImpl<DISubprogram *>::const_iterator;
+  using global_variable_expression_iterator =
+      SmallVectorImpl<DIGlobalVariableExpression *>::const_iterator;
+  using type_iterator = SmallVectorImpl<DIType *>::const_iterator;
+  using scope_iterator = SmallVectorImpl<DIScope *>::const_iterator;
 
   iterator_range<compile_unit_iterator> compile_units() const {
-    return iterator_range<compile_unit_iterator>(CUs.begin(), CUs.end());
+    return make_range(CUs.begin(), CUs.end());
   }
 
   iterator_range<subprogram_iterator> subprograms() const {
-    return iterator_range<subprogram_iterator>(SPs.begin(), SPs.end());
+    return make_range(SPs.begin(), SPs.end());
   }
 
-  iterator_range<global_variable_iterator> global_variables() const {
-    return iterator_range<global_variable_iterator>(GVs.begin(), GVs.end());
+  iterator_range<global_variable_expression_iterator> global_variables() const {
+    return make_range(GVs.begin(), GVs.end());
   }
 
   iterator_range<type_iterator> types() const {
-    return iterator_range<type_iterator>(TYs.begin(), TYs.end());
+    return make_range(TYs.begin(), TYs.end());
   }
 
   iterator_range<scope_iterator> scopes() const {
-    return iterator_range<scope_iterator>(Scopes.begin(), Scopes.end());
+    return make_range(Scopes.begin(), Scopes.end());
   }
 
   unsigned compile_unit_count() const { return CUs.size(); }
@@ -133,18 +129,12 @@ public:
 private:
   SmallVector<DICompileUnit *, 8> CUs;
   SmallVector<DISubprogram *, 8> SPs;
-  SmallVector<DIGlobalVariable *, 8> GVs;
+  SmallVector<DIGlobalVariableExpression *, 8> GVs;
   SmallVector<DIType *, 8> TYs;
   SmallVector<DIScope *, 8> Scopes;
-  SmallPtrSet<const MDNode *, 64> NodesSeen;
-  DITypeIdentifierMap TypeIdentifierMap;
-
-  /// \brief Specify if TypeIdentifierMap is initialized.
-  bool TypeMapInitialized;
+  SmallPtrSet<const MDNode *, 32> NodesSeen;
 };
-
-DenseMap<const Function *, DISubprogram *> makeSubprogramMap(const Module &M);
 
 } // end namespace llvm
 
-#endif
+#endif // LLVM_IR_DEBUGINFO_H

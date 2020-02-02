@@ -1,5 +1,5 @@
 # RUN: llvm-mc %s -triple=mipsel-unknown-linux -mcpu=mips32r2 \
-# RUN:   -mattr=+micromips -filetype=obj -o - | llvm-readobj -t | FileCheck %s
+# RUN:   -mattr=+micromips -filetype=obj -o - | llvm-readobj --symbols | FileCheck %s
   .text
   .set nomicromips
 f:
@@ -9,6 +9,16 @@ g:
   nop
 h:
   .word 0
+k:
+  .long 0
+l:
+  .hword 0
+m:
+  .2byte 0
+n:
+  .4byte 0
+o:
+  .8byte 0
 i:
   nop
 j:
@@ -26,7 +36,9 @@ j:
 # CHECK:     Name: g
 # CHECK:     Binding: Local
 # CHECK:     Type: None
-# CHECK:     Other: 128
+# CHECK:     Other [ (0x80)
+# CHECK:       STO_MIPS_MICROMIPS
+# CHECK:     ]
 # CHECK:     Section: .text
 # CHECK:   }
 # CHECK:   Symbol {
@@ -40,7 +52,9 @@ j:
 # CHECK:     Name: i
 # CHECK:     Binding: Local
 # CHECK:     Type: None
-# CHECK:     Other: 128
+# CHECK:     Other [ (0x80)
+# CHECK:       STO_MIPS_MICROMIPS
+# CHECK:     ]
 # CHECK:     Section: .text
 # CHECK:   }
 # CHECK:   Symbol {
@@ -50,5 +64,39 @@ j:
 # CHECK:     Other: 0
 # CHECK:     Section: .text
 # CHECK:   }
+# CHECK:   Symbol {
+# CHECK:     Name: k
+# CHECK:     Binding: Local
+# CHECK:     Type: None
+# CHECK:     Other: 0
+# CHECK:     Section: .text
+# CHECK:   }
+# CHECK:   Symbol {
+# CHECK:     Name: l
+# CHECK:     Binding: Local
+# CHECK:     Type: None
+# CHECK:     Other: 0
+# CHECK:     Section: .text
+# CHECK:   }
+# CHECK:   Symbol {
+# CHECK:     Name: m
+# CHECK:     Binding: Local
+# CHECK:     Type: None
+# CHECK:     Other: 0
+# CHECK:     Section: .text
+# CHECK:   }
+# CHECK:   Symbol {
+# CHECK:     Name: n
+# CHECK:     Binding: Local
+# CHECK:     Type: None
+# CHECK:     Other: 0
+# CHECK:     Section: .text
+# CHECK:   }
+# CHECK:   Symbol {
+# CHECK:     Name: o
+# CHECK:     Binding: Local
+# CHECK:     Type: None
+# CHECK:     Other: 0
+# CHECK:     Section: .text
+# CHECK:   }
 # CHECK: ]
-

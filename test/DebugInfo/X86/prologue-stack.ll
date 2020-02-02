@@ -1,4 +1,4 @@
-; RUN: llc -disable-fp-elim -O0 %s -mtriple x86_64-unknown-linux-gnu -o - | FileCheck %s
+; RUN: llc -fast-isel-sink-local-values -frame-pointer=all -O0 %s -mtriple x86_64-unknown-linux-gnu -o - | FileCheck %s
 
 ; int callme(int);
 ; int isel_line_test2() {
@@ -6,11 +6,13 @@
 ;   return 0;
 ; }
 
-define i32 @isel_line_test2() nounwind uwtable {
+define i32 @isel_line_test2() nounwind uwtable !dbg !5 {
   ; The stack adjustment should be part of the prologue.
   ; CHECK: isel_line_test2:
   ; CHECK: {{subq|leaq}} {{.*}}, %rsp
   ; CHECK: .loc 1 5 3 prologue_end
+  ; CHECK: movl $400, %edi
+  ; CHECK: callq callme
 entry:
   %call = call i32 @callme(i32 400), !dbg !10
   ret i32 0, !dbg !12
@@ -21,10 +23,9 @@ declare i32 @callme(i32)
 !llvm.dbg.cu = !{!0}
 !llvm.module.flags = !{!14}
 
-!0 = !DICompileUnit(language: DW_LANG_C99, producer: "clang version 3.2 (trunk 164980) (llvm/trunk 164979)", isOptimized: false, emissionKind: 0, file: !13, enums: !1, retainedTypes: !1, subprograms: !3, globals: !1, imports:  !1)
+!0 = distinct !DICompileUnit(language: DW_LANG_C99, producer: "clang version 3.2 (trunk 164980) (llvm/trunk 164979)", isOptimized: false, emissionKind: FullDebug, file: !13, enums: !1, retainedTypes: !1, globals: !1, imports:  !1)
 !1 = !{}
-!3 = !{!5}
-!5 = !DISubprogram(name: "isel_line_test2", line: 3, isLocal: false, isDefinition: true, virtualIndex: 6, isOptimized: false, scopeLine: 4, file: !13, scope: !6, type: !7, function: i32 ()* @isel_line_test2, variables: !1)
+!5 = distinct !DISubprogram(name: "isel_line_test2", line: 3, isLocal: false, isDefinition: true, virtualIndex: 6, isOptimized: false, unit: !0, scopeLine: 4, file: !13, scope: !6, type: !7, retainedNodes: !1)
 !6 = !DIFile(filename: "bar.c", directory: "/usr/local/google/home/echristo/tmp")
 !7 = !DISubroutineType(types: !8)
 !8 = !{!9}

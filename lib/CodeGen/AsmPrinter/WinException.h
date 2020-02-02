@@ -1,9 +1,8 @@
 //===-- WinException.h - Windows Exception Handling ----------*- C++ -*--===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -21,6 +20,8 @@ class Function;
 class GlobalValue;
 class MachineFunction;
 class MCExpr;
+class MCSection;
+class Value;
 struct WinEHFuncInfo;
 
 class LLVM_LIBRARY_VISIBILITY WinException : public EHStreamer {
@@ -36,7 +37,20 @@ class LLVM_LIBRARY_VISIBILITY WinException : public EHStreamer {
   /// True if this is a 64-bit target and we should use image relative offsets.
   bool useImageRel32 = false;
 
-  void emitCSpecificHandlerTable();
+  /// True if we are generating exception handling on Windows for ARM64.
+  bool isAArch64 = false;
+
+  /// Pointer to the current funclet entry BB.
+  const MachineBasicBlock *CurrentFuncletEntry = nullptr;
+
+  /// The section of the last funclet start.
+  MCSection *CurrentFuncletTextSection = nullptr;
+
+  void emitCSpecificHandlerTable(const MachineFunction *MF);
+
+  void emitSEHActionsForRange(const WinEHFuncInfo &FuncInfo,
+                              const MCSymbol *BeginLabel,
+                              const MCSymbol *EndLabel, int State);
 
   /// Emit the EH table data for 32-bit and 64-bit functions using
   /// the __CxxFrameHandler3 personality.
@@ -47,17 +61,31 @@ class LLVM_LIBRARY_VISIBILITY WinException : public EHStreamer {
   /// tables.
   void emitExceptHandlerTable(const MachineFunction *MF);
 
-  void extendIP2StateTable(const MachineFunction *MF, const Function *ParentF,
-                           WinEHFuncInfo &FuncInfo);
+  void emitCLRExceptionTable(const MachineFunction *MF);
 
-  /// Emits the label used with llvm.x86.seh.recoverfp, which is used by
+  void computeIP2StateTable(
+      const MachineFunction *MF, const WinEHFuncInfo &FuncInfo,
+      SmallVectorImpl<std::pair<const MCExpr *, int>> &IPToStateTable);
+
+  /// Emits the label used with llvm.eh.recoverfp, which is used by
   /// outlined funclets.
   void emitEHRegistrationOffsetLabel(const WinEHFuncInfo &FuncInfo,
                                      StringRef FLinkageName);
 
   const MCExpr *create32bitRef(const MCSymbol *Value);
   const MCExpr *create32bitRef(const GlobalValue *GV);
+  const MCExpr *getLabel(const MCSymbol *Label);
+  const MCExpr *getOffset(const MCSymbol *OffsetOf, const MCSymbol *OffsetFrom);
+  const MCExpr *getOffsetPlusOne(const MCSymbol *OffsetOf,
+                                 const MCSymbol *OffsetFrom);
 
+  /// Gets the offset that we should use in a table for a stack object with the
+  /// given index. For targets using CFI (Win64, etc), this is relative to the
+  /// established SP at the end of the prologue. For targets without CFI (Win32
+  /// only), it is relative to the frame pointer.
+  int getFrameIndexOffset(int FrameIndex, const WinEHFuncInfo &FuncInfo);
+
+  void endFuncletImpl();
 public:
   //===--------------------------------------------------------------------===//
   // Main entry points.
@@ -72,8 +100,14 @@ public:
   /// immediately after the function entry point.
   void beginFunction(const MachineFunction *MF) override;
 
+  void markFunctionEnd() override;
+
   /// Gather and emit post-function exception information.
   void endFunction(const MachineFunction *) override;
+
+  /// Emit target-specific EH funclet machinery.
+  void beginFunclet(const MachineBasicBlock &MBB, MCSymbol *Sym) override;
+  void endFunclet() override;
 };
 }
 

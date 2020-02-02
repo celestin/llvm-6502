@@ -1,6 +1,7 @@
-; RUN: llc < %s
+; RUN: llc -verify-machineinstrs < %s | FileCheck %s
+
 target datalayout = "E-p:32:32:32-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:32:64-f32:32:32-f64:32:64-v64:64:64-v128:128:128-a0:0:64-f128:64:128"
-target triple = "powerpc-apple-darwin9"
+target triple = "powerpc-unknown-linux-gnu"
 	%struct.BiPartSrcDescriptor = type <{ %"struct.BiPartSrcDescriptor::$_105" }>
 	%"struct.BiPartSrcDescriptor::$_105" = type { %struct.BiPartSrcDescriptor_NO_VECTOR_ALIGNMENT_size_is_16 }
 	%struct.BiPartSrcDescriptor_NO_VECTOR_ALIGNMENT_size_is_16 = type { [2 x %struct.MotionVectors], [2 x i8], %struct.Map4x4ToPartIdx, [2 x i8], i8, i8 }
@@ -68,8 +69,6 @@ declare void @_Z33LoopFilter_Internal_FilterChromaHPhiiiiii(i8*, i32, i32, i32, 
 
 declare void @_Z42LoopFilter_Internal_filter_macroblock_lumaPK14LoopFilterInfoPhS2_iiiPK30PerMacroblockBoundaryStrengthsjj(%struct.LoopFilterInfo*, i8*, i8*, i32, i32, i32, %struct.PerMacroblockBoundaryStrengths*, i32, i32) nounwind 
 
-declare void @llvm.memcpy.i32(i8*, i8*, i32, i32) nounwind 
-
 declare i32 @_Z40LoopFilter_Internal_FilterLumaPlaneMBAFFPK14LoopFilterInfojjj(%struct.LoopFilterInfo*, i32, i32, i32) nounwind 
 
 declare void @_Z18LoopFilter_DestroyP14LoopFilterInfo(%struct.LoopFilterInfo*)
@@ -86,7 +85,8 @@ declare void @jvtDisposePTRMemAligned(i8*)
 
 declare void @_Z31LoopFilter_Internal_ResetTablesP14LoopFilterInfo(%struct.LoopFilterInfo*) nounwind 
 
-declare void @llvm.memset.i32(i8*, i8, i32, i32) nounwind 
+; CHECK: _Z60LoopFilter_Internal_CalculateBoundaryStrengths_MbaffFramePicPK14LoopFilterInfoP22FrameMotionVectorCachejj
+; CHECK: blr
 
 define i32 @_Z60LoopFilter_Internal_CalculateBoundaryStrengths_MbaffFramePicPK14LoopFilterInfoP22FrameMotionVectorCachejj(%struct.LoopFilterInfo* %lfiPtr, %struct.FrameMotionVectorCache* %frameMotionVectorCachePtr, i32 %mbY_min, i32 %mbY_maxPlus1) nounwind  {
 entry:
@@ -383,4 +383,3 @@ declare i32 @_Z22LoopFilter_FilterFrameP14LoopFilterInfoP11FramePixelsP22FrameMo
 
 declare void @_Z34LF_Threading2_ProcessTasks_WrapperPv(i8*)
 
-declare void @llvm.memset.i64(i8*, i8, i64, i32) nounwind 

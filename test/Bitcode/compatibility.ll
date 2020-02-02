@@ -6,7 +6,7 @@
 ;     http://llvm.org/docs/DeveloperPolicy.html#ir-backwards-compatibility
 
 ; RUN: llvm-as < %s | llvm-dis | llvm-as | llvm-dis | FileCheck %s
-; RUN: verify-uselistorder < %s
+; RUN-PR24755: verify-uselistorder < %s
 
 target datalayout = "E"
 ; CHECK: target datalayout = "E"
@@ -47,14 +47,40 @@ $comdat.samesize = comdat samesize
 ; CHECK: @const.struct = constant %const.struct.type { i32 -1, i8 undef }
 @const.struct.packed = constant %const.struct.type.packed <{ i32 -1, i8 1 }>
 ; CHECK: @const.struct.packed = constant %const.struct.type.packed <{ i32 -1, i8 1 }>
-@const.array = constant [2 x i32] [i32 -3, i32 -4]
-; CHECK: @const.array = constant [2 x i32] [i32 -3, i32 -4]
-@const.vector = constant <2 x i32> <i32 -5, i32 -6>
-; CHECK: @const.vector = constant <2 x i32> <i32 -5, i32 -6>
+
+; CHECK: @constant.array.i8  = constant [3 x i8] c"\00\01\00"
+@constant.array.i8  = constant [3 x i8] [i8 -0, i8 1, i8 0]
+; CHECK: @constant.array.i16 = constant [3 x i16] [i16 0, i16 1, i16 0]
+@constant.array.i16 = constant [3 x i16] [i16 -0, i16 1, i16 0]
+; CHECK: @constant.array.i32 = constant [3 x i32] [i32 0, i32 1, i32 0]
+@constant.array.i32 = constant [3 x i32] [i32 -0, i32 1, i32 0]
+; CHECK: @constant.array.i64 = constant [3 x i64] [i64 0, i64 1, i64 0]
+@constant.array.i64 = constant [3 x i64] [i64 -0, i64 1, i64 0]
+; CHECK: @constant.array.f16 = constant [3 x half] [half 0xH8000, half 0xH3C00, half 0xH0000]
+@constant.array.f16 = constant [3 x half] [half -0.0, half 1.0, half 0.0]
+; CHECK: @constant.array.f32 = constant [3 x float] [float -0.000000e+00, float 1.000000e+00, float 0.000000e+00]
+@constant.array.f32 = constant [3 x float] [float -0.0, float 1.0, float 0.0]
+; CHECK: @constant.array.f64 = constant [3 x double] [double -0.000000e+00, double 1.000000e+00, double 0.000000e+00]
+@constant.array.f64 = constant [3 x double] [double -0.0, double 1.0, double 0.0]
+
+; CHECK: @constant.vector.i8  = constant <3 x i8>  <i8 0, i8 1, i8 0>
+@constant.vector.i8  = constant <3 x i8>  <i8 -0, i8 1, i8 0>
+; CHECK: @constant.vector.i16 = constant <3 x i16> <i16 0, i16 1, i16 0>
+@constant.vector.i16 = constant <3 x i16> <i16 -0, i16 1, i16 0>
+; CHECK: @constant.vector.i32 = constant <3 x i32> <i32 0, i32 1, i32 0>
+@constant.vector.i32 = constant <3 x i32> <i32 -0, i32 1, i32 0>
+; CHECK: @constant.vector.i64 = constant <3 x i64> <i64 0, i64 1, i64 0>
+@constant.vector.i64 = constant <3 x i64> <i64 -0, i64 1, i64 0>
+; CHECK: @constant.vector.f16 = constant <3 x half> <half 0xH8000, half 0xH3C00, half 0xH0000>
+@constant.vector.f16 = constant <3 x half> <half -0.0, half 1.0, half 0.0>
+; CHECK: @constant.vector.f32 = constant <3 x float> <float -0.000000e+00, float 1.000000e+00, float 0.000000e+00>
+@constant.vector.f32 = constant <3 x float> <float -0.0, float 1.0, float 0.0>
+; CHECK: @constant.vector.f64 = constant <3 x double> <double -0.000000e+00, double 1.000000e+00, double 0.000000e+00>
+@constant.vector.f64 = constant <3 x double> <double -0.0, double 1.0, double 0.0>
 
 ;; Global Variables
 ; Format: [@<GlobalVarName> =] [Linkage] [Visibility] [DLLStorageClass]
-;         [ThreadLocal] [unnamed_addr] [AddrSpace] [ExternallyInitialized]
+;         [ThreadLocal] [(unnamed_addr|local_unnamed_addr)] [AddrSpace] [ExternallyInitialized]
 ;         <global | constant> <Type> [<InitializerConstant>]
 ;         [, section "name"] [, comdat [($name)]] [, align <Alignment>]
 
@@ -116,9 +142,11 @@ $comdat.samesize = comdat samesize
 @g.localexec = thread_local(localexec) global i32 0
 ; CHECK: @g.localexec = thread_local(localexec) global i32 0
 
-; Global Variables -- unnamed_addr
+; Global Variables -- unnamed_addr and local_unnamed_addr
 @g.unnamed_addr = unnamed_addr global i32 0
 ; CHECK: @g.unnamed_addr = unnamed_addr global i32 0
+@g.local_unnamed_addr = local_unnamed_addr global i32 0
+; CHECK: @g.local_unnamed_addr = local_unnamed_addr global i32 0
 
 ; Global Variables -- AddrSpace
 @g.addrspace = addrspace(1) global i32 0
@@ -131,6 +159,10 @@ $comdat.samesize = comdat samesize
 ; Global Variables -- section
 @g.section = global i32 0, section "_DATA"
 ; CHECK: @g.section = global i32 0, section "_DATA"
+
+; Global Variables -- partition
+@g.partition = global i32 0, partition "part"
+; CHECK: @g.partition = global i32 0, partition "part"
 
 ; Global Variables -- comdat
 @comdat.any = global i32 0, comdat
@@ -176,58 +208,91 @@ declare void @g.f1()
 ;                   [unnamed_addr] alias <AliaseeTy> @<Aliasee>
 
 ; Aliases -- Linkage
-@a.private = private alias i32* @g.private
-; CHECK: @a.private = private alias i32* @g.private
-@a.internal = internal alias i32* @g.internal
-; CHECK: @a.internal = internal alias i32* @g.internal
-@a.linkonce = linkonce alias i32* @g.linkonce
-; CHECK: @a.linkonce = linkonce alias i32* @g.linkonce
-@a.weak = weak alias i32* @g.weak
-; CHECK: @a.weak = weak alias i32* @g.weak
-@a.linkonce_odr = linkonce_odr alias i32* @g.linkonce_odr
-; CHECK: @a.linkonce_odr = linkonce_odr alias i32* @g.linkonce_odr
-@a.weak_odr = weak_odr alias i32* @g.weak_odr
-; CHECK: @a.weak_odr = weak_odr alias i32* @g.weak_odr
-@a.external = external alias i32* @g1
-; CHECK: @a.external = alias i32* @g1
+@a.private = private alias i32, i32* @g.private
+; CHECK: @a.private = private alias i32, i32* @g.private
+@a.internal = internal alias i32, i32* @g.internal
+; CHECK: @a.internal = internal alias i32, i32* @g.internal
+@a.linkonce = linkonce alias i32, i32* @g.linkonce
+; CHECK: @a.linkonce = linkonce alias i32, i32* @g.linkonce
+@a.weak = weak alias i32, i32* @g.weak
+; CHECK: @a.weak = weak alias i32, i32* @g.weak
+@a.linkonce_odr = linkonce_odr alias i32, i32* @g.linkonce_odr
+; CHECK: @a.linkonce_odr = linkonce_odr alias i32, i32* @g.linkonce_odr
+@a.weak_odr = weak_odr alias i32, i32* @g.weak_odr
+; CHECK: @a.weak_odr = weak_odr alias i32, i32* @g.weak_odr
+@a.external = external alias i32, i32* @g1
+; CHECK: @a.external = alias i32, i32* @g1
 
 ; Aliases -- Visibility
-@a.default = default alias i32* @g.default
-; CHECK: @a.default = alias i32* @g.default
-@a.hidden = hidden alias i32* @g.hidden
-; CHECK: @a.hidden = hidden alias i32* @g.hidden
-@a.protected = protected alias i32* @g.protected
-; CHECK: @a.protected = protected alias i32* @g.protected
+@a.default = default alias i32, i32* @g.default
+; CHECK: @a.default = alias i32, i32* @g.default
+@a.hidden = hidden alias i32, i32* @g.hidden
+; CHECK: @a.hidden = hidden alias i32, i32* @g.hidden
+@a.protected = protected alias i32, i32* @g.protected
+; CHECK: @a.protected = protected alias i32, i32* @g.protected
 
 ; Aliases -- DLLStorageClass
-@a.dlldefault = default alias i32* @g.dlldefault
-; CHECK: @a.dlldefault = alias i32* @g.dlldefault
-@a.dllimport = dllimport alias i32* @g1
-; CHECK: @a.dllimport = dllimport alias i32* @g1
-@a.dllexport = dllexport alias i32* @g.dllexport
-; CHECK: @a.dllexport = dllexport alias i32* @g.dllexport
+@a.dlldefault = default alias i32, i32* @g.dlldefault
+; CHECK: @a.dlldefault = alias i32, i32* @g.dlldefault
+@a.dllexport = dllexport alias i32, i32* @g.dllexport
+; CHECK: @a.dllexport = dllexport alias i32, i32* @g.dllexport
 
 ; Aliases -- ThreadLocal
-@a.notthreadlocal = alias i32* @g.notthreadlocal
-; CHECK: @a.notthreadlocal = alias i32* @g.notthreadlocal
-@a.generaldynamic = thread_local alias i32* @g.generaldynamic
-; CHECK: @a.generaldynamic = thread_local alias i32* @g.generaldynamic
-@a.localdynamic = thread_local(localdynamic) alias i32* @g.localdynamic
-; CHECK: @a.localdynamic = thread_local(localdynamic) alias i32* @g.localdynamic
-@a.initialexec = thread_local(initialexec) alias i32* @g.initialexec
-; CHECK: @a.initialexec = thread_local(initialexec) alias i32* @g.initialexec
-@a.localexec = thread_local(localexec) alias i32* @g.localexec
-; CHECK: @a.localexec = thread_local(localexec) alias i32* @g.localexec
+@a.notthreadlocal = alias i32, i32* @g.notthreadlocal
+; CHECK: @a.notthreadlocal = alias i32, i32* @g.notthreadlocal
+@a.generaldynamic = thread_local alias i32, i32* @g.generaldynamic
+; CHECK: @a.generaldynamic = thread_local alias i32, i32* @g.generaldynamic
+@a.localdynamic = thread_local(localdynamic) alias i32, i32* @g.localdynamic
+; CHECK: @a.localdynamic = thread_local(localdynamic) alias i32, i32* @g.localdynamic
+@a.initialexec = thread_local(initialexec) alias i32, i32* @g.initialexec
+; CHECK: @a.initialexec = thread_local(initialexec) alias i32, i32* @g.initialexec
+@a.localexec = thread_local(localexec) alias i32, i32* @g.localexec
+; CHECK: @a.localexec = thread_local(localexec) alias i32, i32* @g.localexec
 
-; Aliases -- unnamed_addr
-@a.unnamed_addr = unnamed_addr alias i32* @g.unnamed_addr
-; CHECK: @a.unnamed_addr = unnamed_addr alias i32* @g.unnamed_addr
+; Aliases -- unnamed_addr and local_unnamed_addr
+@a.unnamed_addr = unnamed_addr alias i32, i32* @g.unnamed_addr
+; CHECK: @a.unnamed_addr = unnamed_addr alias i32, i32* @g.unnamed_addr
+@a.local_unnamed_addr = local_unnamed_addr alias i32, i32* @g.local_unnamed_addr
+; CHECK: @a.local_unnamed_addr = local_unnamed_addr alias i32, i32* @g.local_unnamed_addr
+
+; Aliases -- partition
+; CHECK: @alias.partition = alias i32, i32* @g.partition, partition "part"
+@alias.partition = alias i32, i32* @g.partition, partition "part"
+
+;; IFunc
+; Format @<Name> = [Linkage] [Visibility] ifunc <IFuncTy>,
+;                  <ResolverTy>* @<Resolver>
+
+; IFunc -- Linkage
+@ifunc.external = external ifunc void (), i8* ()* @ifunc_resolver
+; CHECK: @ifunc.external = ifunc void (), i8* ()* @ifunc_resolver
+@ifunc.private = private ifunc void (), i8* ()* @ifunc_resolver
+; CHECK: @ifunc.private = private ifunc void (), i8* ()* @ifunc_resolver
+@ifunc.internal = internal ifunc void (), i8* ()* @ifunc_resolver
+; CHECK: @ifunc.internal = internal ifunc void (), i8* ()* @ifunc_resolver
+
+; IFunc -- Visibility
+@ifunc.default = default ifunc void (), i8* ()* @ifunc_resolver
+; CHECK: @ifunc.default = ifunc void (), i8* ()* @ifunc_resolver
+@ifunc.hidden = hidden ifunc void (), i8* ()* @ifunc_resolver
+; CHECK: @ifunc.hidden = hidden ifunc void (), i8* ()* @ifunc_resolver
+@ifunc.protected = protected ifunc void (), i8* ()* @ifunc_resolver
+; CHECK: @ifunc.protected = protected ifunc void (), i8* ()* @ifunc_resolver
+
+; IFunc -- partition
+; CHECK: @ifunc.partition = ifunc void (), i8* ()* @ifunc_resolver, partition "part"
+@ifunc.partition = ifunc void (), i8* ()* @ifunc_resolver, partition "part"
+
+define i8* @ifunc_resolver() {
+entry:
+  ret i8* null
+}
 
 ;; Functions
 ; Format: define [linkage] [visibility] [DLLStorageClass]
 ;         [cconv] [ret attrs]
 ;         <ResultType> @<FunctionName> ([argument list])
-;         [unnamed_addr] [fn Attrs] [section "name"] [comdat [($name)]]
+;         [(unnamed_addr|local_unnamed_addr)] [fn Attrs] [section "name"] [comdat [($name)]]
 ;         [align N] [gc] [prefix Constant] [prologue Constant]
 ;         [personality Constant] { ... }
 
@@ -370,15 +435,67 @@ declare cc78 void @f.cc78()
 declare x86_64_sysvcc void @f.x86_64_sysvcc()
 ; CHECK: declare x86_64_sysvcc void @f.x86_64_sysvcc()
 declare cc79 void @f.cc79()
-; CHECK: declare x86_64_win64cc void @f.cc79()
-declare x86_64_win64cc void @f.x86_64_win64cc()
-; CHECK: declare x86_64_win64cc void @f.x86_64_win64cc()
+; CHECK: declare win64cc void @f.cc79()
+declare win64cc void @f.win64cc()
+; CHECK: declare win64cc void @f.win64cc()
 declare cc80 void @f.cc80()
 ; CHECK: declare x86_vectorcallcc void @f.cc80()
 declare x86_vectorcallcc void @f.x86_vectorcallcc()
 ; CHECK: declare x86_vectorcallcc void @f.x86_vectorcallcc()
-declare cc8191 void @f.cc8191()
-; CHECK: declare cc8191 void @f.cc8191()
+declare cc81 void @f.cc81()
+; CHECK: declare hhvmcc void @f.cc81()
+declare hhvmcc void @f.hhvmcc()
+; CHECK: declare hhvmcc void @f.hhvmcc()
+declare cc82 void @f.cc82()
+; CHECK: declare hhvm_ccc void @f.cc82()
+declare hhvm_ccc void @f.hhvm_ccc()
+; CHECK: declare hhvm_ccc void @f.hhvm_ccc()
+declare cc83 void @f.cc83()
+; CHECK: declare x86_intrcc void @f.cc83()
+declare x86_intrcc void @f.x86_intrcc()
+; CHECK: declare x86_intrcc void @f.x86_intrcc()
+declare cc84 void @f.cc84()
+; CHECK: declare avr_intrcc void @f.cc84()
+declare avr_intrcc void @f.avr_intrcc()
+; CHECK: declare avr_intrcc void @f.avr_intrcc()
+declare cc85 void @f.cc85()
+; CHECK: declare avr_signalcc void @f.cc85()
+declare avr_signalcc void @f.avr_signalcc()
+; CHECK: declare avr_signalcc void @f.avr_signalcc()
+declare cc87 void @f.cc87()
+; CHECK: declare amdgpu_vs void @f.cc87()
+declare amdgpu_vs void @f.amdgpu_vs()
+; CHECK: declare amdgpu_vs void @f.amdgpu_vs()
+declare cc88 void @f.cc88()
+; CHECK: declare amdgpu_gs void @f.cc88()
+declare amdgpu_gs void @f.amdgpu_gs()
+; CHECK: declare amdgpu_gs void @f.amdgpu_gs()
+declare cc89 void @f.cc89()
+; CHECK: declare amdgpu_ps void @f.cc89()
+declare amdgpu_ps void @f.amdgpu_ps()
+; CHECK: declare amdgpu_ps void @f.amdgpu_ps()
+declare cc90 void @f.cc90()
+; CHECK: declare amdgpu_cs void @f.cc90()
+declare amdgpu_cs void @f.amdgpu_cs()
+; CHECK: declare amdgpu_cs void @f.amdgpu_cs()
+declare cc91 void @f.cc91()
+; CHECK: declare amdgpu_kernel void @f.cc91()
+declare amdgpu_kernel void @f.amdgpu_kernel()
+; CHECK: declare amdgpu_kernel void @f.amdgpu_kernel()
+declare cc93 void @f.cc93()
+; CHECK: declare amdgpu_hs void @f.cc93()
+declare amdgpu_hs void @f.amdgpu_hs()
+; CHECK: declare amdgpu_hs void @f.amdgpu_hs()
+declare cc95 void @f.cc95()
+; CHECK: declare amdgpu_ls void @f.cc95()
+declare amdgpu_ls void @f.amdgpu_ls()
+; CHECK: declare amdgpu_ls void @f.amdgpu_ls()
+declare cc96 void @f.cc96()
+; CHECK: declare amdgpu_es void @f.cc96()
+declare amdgpu_es void @f.amdgpu_es()
+; CHECK: declare amdgpu_es void @f.amdgpu_es()
+declare cc1023 void @f.cc1023()
+; CHECK: declare cc1023 void @f.cc1023()
 
 ; Functions -- ret attrs (Return attributes)
 declare zeroext i64 @f.zeroext()
@@ -412,7 +529,7 @@ declare void @f.param.signext(i8 signext)
 declare void @f.param.inreg(i8 inreg)
 ; CHECK: declare void @f.param.inreg(i8 inreg)
 declare void @f.param.byval({ i8, i8 }* byval)
-; CHECK: declare void @f.param.byval({ i8, i8 }* byval)
+; CHECK: declare void @f.param.byval({ i8, i8 }* byval({ i8, i8 }))
 declare void @f.param.inalloca(i8* inalloca)
 ; CHECK: declare void @f.param.inalloca(i8* inalloca)
 declare void @f.param.sret(i8* sret)
@@ -432,9 +549,11 @@ declare void @f.param.dereferenceable(i8* dereferenceable(4))
 declare void @f.param.dereferenceable_or_null(i8* dereferenceable_or_null(4))
 ; CHECK: declare void @f.param.dereferenceable_or_null(i8* dereferenceable_or_null(4))
 
-; Functions -- unnamed_addr
+; Functions -- unnamed_addr and local_unnamed_addr
 declare void @f.unnamed_addr() unnamed_addr
 ; CHECK: declare void @f.unnamed_addr() unnamed_addr
+declare void @f.local_unnamed_addr() local_unnamed_addr
+; CHECK: declare void @f.local_unnamed_addr() local_unnamed_addr
 
 ; Functions -- fn Attrs (Function attributes)
 declare void @f.alignstack4() alignstack(4)
@@ -501,10 +620,23 @@ declare void @f.uwtable() uwtable
 ; CHECK: declare void @f.uwtable() #30
 declare void @f.kvpair() "cpu"="cortex-a8"
 ; CHECK:declare void @f.kvpair() #31
+declare void @f.norecurse() norecurse
+; CHECK: declare void @f.norecurse() #32
+declare void @f.inaccessiblememonly() inaccessiblememonly
+; CHECK: declare void @f.inaccessiblememonly() #33
+declare void @f.inaccessiblemem_or_argmemonly() inaccessiblemem_or_argmemonly
+; CHECK: declare void @f.inaccessiblemem_or_argmemonly() #34
+declare void @f.strictfp() #35
 
 ; Functions -- section
 declare void @f.section() section "80"
 ; CHECK: declare void @f.section() section "80"
+
+; Functions -- partition
+define void @f.partition() partition "part" {
+; CHECK: define void @f.partition() partition "part"
+  ret void
+}
 
 ; Functions -- comdat
 define void @f.comdat_any() comdat($comdat.any) {
@@ -559,7 +691,7 @@ declare void @f.prologuearray() prologue [4 x i32] [i32 0, i32 1, i32 2, i32 3]
 
 ; Functions -- Personality constant
 declare void @llvm.donothing() nounwind readnone
-; CHECK: declare void @llvm.donothing() #32
+; CHECK: declare void @llvm.donothing() #35
 define void @f.no_personality() personality i8 3 {
 ; CHECK: define void @f.no_personality() personality i8 3
   invoke void @llvm.donothing() to label %normal unwind label %exception
@@ -598,8 +730,8 @@ define void @atomics(i32* %word) {
   ; CHECK: %cmpxchg.5 = cmpxchg weak i32* %word, i32 0, i32 9 seq_cst monotonic
   %cmpxchg.6 = cmpxchg volatile i32* %word, i32 0, i32 10 seq_cst monotonic
   ; CHECK: %cmpxchg.6 = cmpxchg volatile i32* %word, i32 0, i32 10 seq_cst monotonic
-  %cmpxchg.7 = cmpxchg weak volatile i32* %word, i32 0, i32 11 singlethread seq_cst monotonic
-  ; CHECK: %cmpxchg.7 = cmpxchg weak volatile i32* %word, i32 0, i32 11 singlethread seq_cst monotonic
+  %cmpxchg.7 = cmpxchg weak volatile i32* %word, i32 0, i32 11 syncscope("singlethread") seq_cst monotonic
+  ; CHECK: %cmpxchg.7 = cmpxchg weak volatile i32* %word, i32 0, i32 11 syncscope("singlethread") seq_cst monotonic
   %atomicrmw.xchg = atomicrmw xchg i32* %word, i32 12 monotonic
   ; CHECK: %atomicrmw.xchg = atomicrmw xchg i32* %word, i32 12 monotonic
   %atomicrmw.add = atomicrmw add i32* %word, i32 13 monotonic
@@ -618,37 +750,70 @@ define void @atomics(i32* %word) {
   ; CHECK: %atomicrmw.max = atomicrmw max i32* %word, i32 19 monotonic
   %atomicrmw.min = atomicrmw volatile min i32* %word, i32 20 monotonic
   ; CHECK: %atomicrmw.min = atomicrmw volatile min i32* %word, i32 20 monotonic
-  %atomicrmw.umax = atomicrmw umax i32* %word, i32 21 singlethread monotonic
-  ; CHECK: %atomicrmw.umax = atomicrmw umax i32* %word, i32 21 singlethread monotonic
-  %atomicrmw.umin = atomicrmw volatile umin i32* %word, i32 22 singlethread monotonic
-  ; CHECK: %atomicrmw.umin = atomicrmw volatile umin i32* %word, i32 22 singlethread monotonic
+  %atomicrmw.umax = atomicrmw umax i32* %word, i32 21 syncscope("singlethread") monotonic
+  ; CHECK: %atomicrmw.umax = atomicrmw umax i32* %word, i32 21 syncscope("singlethread") monotonic
+  %atomicrmw.umin = atomicrmw volatile umin i32* %word, i32 22 syncscope("singlethread") monotonic
+  ; CHECK: %atomicrmw.umin = atomicrmw volatile umin i32* %word, i32 22 syncscope("singlethread") monotonic
   fence acquire
   ; CHECK: fence acquire
   fence release
   ; CHECK: fence release
   fence acq_rel
   ; CHECK: fence acq_rel
-  fence singlethread seq_cst
-  ; CHECK: fence singlethread seq_cst
+  fence syncscope("singlethread") seq_cst
+  ; CHECK: fence syncscope("singlethread") seq_cst
 
   %ld.1 = load atomic i32, i32* %word monotonic, align 4
   ; CHECK: %ld.1 = load atomic i32, i32* %word monotonic, align 4
   %ld.2 = load atomic volatile i32, i32* %word acquire, align 8
   ; CHECK: %ld.2 = load atomic volatile i32, i32* %word acquire, align 8
-  %ld.3 = load atomic volatile i32, i32* %word singlethread seq_cst, align 16
-  ; CHECK: %ld.3 = load atomic volatile i32, i32* %word singlethread seq_cst, align 16
+  %ld.3 = load atomic volatile i32, i32* %word syncscope("singlethread") seq_cst, align 16
+  ; CHECK: %ld.3 = load atomic volatile i32, i32* %word syncscope("singlethread") seq_cst, align 16
 
   store atomic i32 23, i32* %word monotonic, align 4
   ; CHECK: store atomic i32 23, i32* %word monotonic, align 4
   store atomic volatile i32 24, i32* %word monotonic, align 4
   ; CHECK: store atomic volatile i32 24, i32* %word monotonic, align 4
-  store atomic volatile i32 25, i32* %word singlethread monotonic, align 4
-  ; CHECK: store atomic volatile i32 25, i32* %word singlethread monotonic, align 4
+  store atomic volatile i32 25, i32* %word syncscope("singlethread") monotonic, align 4
+  ; CHECK: store atomic volatile i32 25, i32* %word syncscope("singlethread") monotonic, align 4
+  ret void
+}
+
+define void @fp_atomics(float* %word) {
+; CHECK: %atomicrmw.xchg = atomicrmw xchg float* %word, float 1.000000e+00 monotonic
+  %atomicrmw.xchg = atomicrmw xchg float* %word, float 1.0 monotonic
+
+; CHECK: %atomicrmw.fadd = atomicrmw fadd float* %word, float 1.000000e+00 monotonic
+  %atomicrmw.fadd = atomicrmw fadd float* %word, float 1.0 monotonic
+
+; CHECK: %atomicrmw.fsub = atomicrmw fsub float* %word, float 1.000000e+00 monotonic
+  %atomicrmw.fsub = atomicrmw fsub float* %word, float 1.0 monotonic
+
   ret void
 }
 
 ;; Fast Math Flags
-define void @fastmathflags(float %op1, float %op2) {
+define void @fastmathflags_unop(float %op1) {
+  %f.nnan = fneg nnan float %op1
+  ; CHECK: %f.nnan = fneg nnan float %op1
+  %f.ninf = fneg ninf float %op1
+  ; CHECK: %f.ninf = fneg ninf float %op1
+  %f.nsz = fneg nsz float %op1
+  ; CHECK: %f.nsz = fneg nsz float %op1
+  %f.arcp = fneg arcp float %op1
+  ; CHECK: %f.arcp = fneg arcp float %op1
+  %f.contract = fneg contract float %op1
+  ; CHECK: %f.contract = fneg contract float %op1
+  %f.afn = fneg afn float %op1
+  ; CHECK: %f.afn = fneg afn float %op1
+  %f.reassoc = fneg reassoc float %op1
+  ; CHECK: %f.reassoc = fneg reassoc float %op1
+  %f.fast = fneg fast float %op1
+  ; CHECK: %f.fast = fneg fast float %op1
+  ret void
+}
+
+define void @fastmathflags_binops(float %op1, float %op2) {
   %f.nnan = fadd nnan float %op1, %op2
   ; CHECK: %f.nnan = fadd nnan float %op1, %op2
   %f.ninf = fadd ninf float %op1, %op2
@@ -657,8 +822,106 @@ define void @fastmathflags(float %op1, float %op2) {
   ; CHECK: %f.nsz = fadd nsz float %op1, %op2
   %f.arcp = fadd arcp float %op1, %op2
   ; CHECK: %f.arcp = fadd arcp float %op1, %op2
+  %f.contract = fadd contract float %op1, %op2
+  ; CHECK: %f.contract = fadd contract float %op1, %op2
+  %f.afn = fadd afn float %op1, %op2
+  ; CHECK: %f.afn = fadd afn float %op1, %op2
+  %f.reassoc = fadd reassoc float %op1, %op2
+  ; CHECK: %f.reassoc = fadd reassoc float %op1, %op2
   %f.fast = fadd fast float %op1, %op2
   ; CHECK: %f.fast = fadd fast float %op1, %op2
+  ret void
+}
+
+define void @fastmathflags_select(i1 %cond, float %op1, float %op2) {
+  %f.nnan = select nnan i1 %cond, float %op1, float %op2
+  ; CHECK: %f.nnan = select nnan i1 %cond, float %op1, float %op2
+  %f.ninf = select ninf i1 %cond, float %op1, float %op2
+  ; CHECK: %f.ninf = select ninf i1 %cond, float %op1, float %op2
+  %f.nsz = select nsz i1 %cond, float %op1, float %op2
+  ; CHECK: %f.nsz = select nsz i1 %cond, float %op1, float %op2
+  %f.arcp = select arcp i1 %cond, float %op1, float %op2
+  ; CHECK: %f.arcp = select arcp i1 %cond, float %op1, float %op2
+  %f.contract = select contract i1 %cond, float %op1, float %op2
+  ; CHECK: %f.contract = select contract i1 %cond, float %op1, float %op2
+  %f.afn = select afn i1 %cond, float %op1, float %op2
+  ; CHECK: %f.afn = select afn i1 %cond, float %op1, float %op2
+  %f.reassoc = select reassoc i1 %cond, float %op1, float %op2
+  ; CHECK: %f.reassoc = select reassoc i1 %cond, float %op1, float %op2
+  %f.fast = select fast i1 %cond, float %op1, float %op2
+  ; CHECK: %f.fast = select fast i1 %cond, float %op1, float %op2
+  ret void
+}
+
+define void @fastmathflags_vector_select(<2 x i1> %cond, <2 x double> %op1, <2 x double> %op2) {
+  %f.nnan.nsz = select nnan nsz <2 x i1> %cond, <2 x double> %op1, <2 x double> %op2
+  ; CHECK: %f.nnan.nsz = select nnan nsz <2 x i1> %cond, <2 x double> %op1, <2 x double> %op2
+  %f.fast = select fast <2 x i1> %cond, <2 x double> %op1, <2 x double> %op2
+  ; CHECK: %f.fast = select fast <2 x i1> %cond, <2 x double> %op1, <2 x double> %op2
+  ret void
+}
+
+define void @fastmathflags_phi(i1 %cond, float %f1, float %f2, double %d1, double %d2, half %h1, half %h2) {
+entry:
+  br i1 %cond, label %L1, label %L2
+L1:
+  br label %exit
+L2:
+  br label %exit
+exit:
+  %p.nnan = phi nnan float [ %f1, %L1 ], [ %f2, %L2 ]
+  ; CHECK: %p.nnan = phi nnan float [ %f1, %L1 ], [ %f2, %L2 ]
+  %p.ninf = phi ninf double [ %d1, %L1 ], [ %d2, %L2 ]
+  ; CHECK: %p.ninf = phi ninf double [ %d1, %L1 ], [ %d2, %L2 ]
+  %p.contract = phi contract half [ %h1, %L1 ], [ %h2, %L2 ]
+  ; CHECK: %p.contract = phi contract half [ %h1, %L1 ], [ %h2, %L2 ]
+  %p.nsz.reassoc = phi reassoc nsz float [ %f1, %L1 ], [ %f2, %L2 ]
+  ; CHECK: %p.nsz.reassoc = phi reassoc nsz float [ %f1, %L1 ], [ %f2, %L2 ]
+  %p.fast = phi fast half [ %h2, %L1 ], [ %h1, %L2 ]
+  ; CHECK: %p.fast = phi fast half [ %h2, %L1 ], [ %h1, %L2 ]
+  ret void
+}
+
+define void @fastmathflags_vector_phi(i1 %cond, <4 x float> %f1, <4 x float> %f2, <2 x double> %d1, <2 x double> %d2, <8 x half> %h1, <8 x half> %h2) {
+entry:
+  br i1 %cond, label %L1, label %L2
+L1:
+  br label %exit
+L2:
+  br label %exit
+exit:
+  %p.nnan = phi nnan <4 x float> [ %f1, %L1 ], [ %f2, %L2 ]
+  ; CHECK: %p.nnan = phi nnan <4 x float> [ %f1, %L1 ], [ %f2, %L2 ]
+  %p.ninf = phi ninf <2 x double> [ %d1, %L1 ], [ %d2, %L2 ]
+  ; CHECK: %p.ninf = phi ninf <2 x double> [ %d1, %L1 ], [ %d2, %L2 ]
+  %p.contract = phi contract <8 x half> [ %h1, %L1 ], [ %h2, %L2 ]
+  ; CHECK: %p.contract = phi contract <8 x half> [ %h1, %L1 ], [ %h2, %L2 ]
+  %p.nsz.reassoc = phi reassoc nsz <4 x float> [ %f1, %L1 ], [ %f2, %L2 ]
+  ; CHECK: %p.nsz.reassoc = phi reassoc nsz <4 x float> [ %f1, %L1 ], [ %f2, %L2 ]
+  %p.fast = phi fast <8 x half> [ %h2, %L1 ], [ %h1, %L2 ]
+  ; CHECK: %p.fast = phi fast <8 x half> [ %h2, %L1 ], [ %h1, %L2 ]
+  ret void
+}
+
+; Check various fast math flags and floating-point types on calls.
+
+declare float @fmf1()
+declare double @fmf2()
+declare <4 x double> @fmf3()
+
+; CHECK-LABEL: fastMathFlagsForCalls(
+define void @fastMathFlagsForCalls(float %f, double %d1, <4 x double> %d2) {
+  %call.fast = call fast float @fmf1()
+  ; CHECK: %call.fast = call fast float @fmf1()
+
+  ; Throw in some other attributes to make sure those stay in the right places.
+
+  %call.nsz.arcp = notail call nsz arcp double @fmf2()
+  ; CHECK: %call.nsz.arcp = notail call nsz arcp double @fmf2()
+
+  %call.nnan.ninf = tail call nnan ninf fastcc <4 x double> @fmf3()
+  ; CHECK: %call.nnan.ninf = tail call nnan ninf fastcc <4 x double> @fmf3()
+
   ret void
 }
 
@@ -696,9 +959,16 @@ define void @typesystem() {
   ; CHECK: %t7 = alloca x86_mmx
   %t8 = alloca %opaquety*
   ; CHECK: %t8 = alloca %opaquety*
+  %t9 = alloca <4 x i32>
+  ; CHECK: %t9 = alloca <4 x i32>
+  %t10 = alloca <vscale x 4 x i32>
+  ; CHECK: %t10 = alloca <vscale x 4 x i32>
 
   ret void
 }
+
+declare void @llvm.token(token)
+; CHECK: declare void @llvm.token(token)
 
 ;; Inline Assembler Expressions
 define void @inlineasm(i32 %arg) {
@@ -757,6 +1027,105 @@ exc:
   unreachable
   ; CHECK: unreachable
 
+  ret void
+}
+
+define i32 @instructions.win_eh.1() personality i32 -3 {
+entry:
+  %arg1 = alloca i32
+  %arg2 = alloca i32
+  invoke void @f.ccc() to label %normal unwind label %catchswitch1
+  invoke void @f.ccc() to label %normal unwind label %catchswitch2
+  invoke void @f.ccc() to label %normal unwind label %catchswitch3
+
+catchswitch1:
+  %cs1 = catchswitch within none [label %catchpad1] unwind to caller
+
+catchpad1:
+  catchpad within %cs1 []
+  br label %normal
+  ; CHECK: catchpad within %cs1 []
+  ; CHECK-NEXT: br label %normal
+
+catchswitch2:
+  %cs2 = catchswitch within none [label %catchpad2] unwind to caller
+
+catchpad2:
+  catchpad within %cs2 [i32* %arg1]
+  br label %normal
+  ; CHECK: catchpad within %cs2 [i32* %arg1]
+  ; CHECK-NEXT: br label %normal
+
+catchswitch3:
+  %cs3 = catchswitch within none [label %catchpad3] unwind label %cleanuppad1
+
+catchpad3:
+  catchpad within %cs3 [i32* %arg1, i32* %arg2]
+  br label %normal
+  ; CHECK: catchpad within %cs3 [i32* %arg1, i32* %arg2]
+  ; CHECK-NEXT: br label %normal
+
+cleanuppad1:
+  %clean.1 = cleanuppad within none []
+  unreachable
+  ; CHECK: %clean.1 = cleanuppad within none []
+  ; CHECK-NEXT: unreachable
+
+normal:
+  ret i32 0
+}
+;
+define i32 @instructions.win_eh.2() personality i32 -4 {
+entry:
+  invoke void @f.ccc() to label %invoke.cont unwind label %catchswitch
+
+invoke.cont:
+  invoke void @f.ccc() to label %continue unwind label %cleanup
+
+cleanup:
+  %clean = cleanuppad within none []
+  ; CHECK: %clean = cleanuppad within none []
+  cleanupret from %clean unwind to caller
+  ; CHECK: cleanupret from %clean unwind to caller
+
+catchswitch:
+  %cs = catchswitch within none [label %catchpad] unwind label %terminate
+
+catchpad:
+  %catch = catchpad within %cs []
+  br label %body
+  ; CHECK: %catch = catchpad within %cs []
+  ; CHECK-NEXT: br label %body
+
+body:
+  invoke void @f.ccc() [ "funclet"(token %catch) ]
+    to label %continue unwind label %terminate.inner
+  catchret from %catch to label %return
+  ; CHECK: catchret from %catch to label %return
+
+return:
+  ret i32 0
+
+terminate.inner:
+  cleanuppad within %catch []
+  unreachable
+  ; CHECK: cleanuppad within %catch []
+  ; CHECK-NEXT: unreachable
+
+terminate:
+  cleanuppad within none []
+  unreachable
+  ; CHECK: cleanuppad within none []
+  ; CHECK-NEXT: unreachable
+
+continue:
+  ret i32 0
+}
+
+; Instructions -- Unary Operations
+define void @instructions.unops(double %op1) {
+  fneg double %op1
+  ; CHECK: fneg double %op1
   ret void
 }
 
@@ -1024,7 +1393,7 @@ exit:
   ; CHECK: select <2 x i1> <i1 true, i1 false>, <2 x i8> <i8 2, i8 3>, <2 x i8> <i8 3, i8 2>
 
   call void @f.nobuiltin() builtin
-  ; CHECK: call void @f.nobuiltin() #34
+  ; CHECK: call void @f.nobuiltin() #43
 
   call fastcc noalias i32* @f.noalias() noinline
   ; CHECK: call fastcc noalias i32* @f.noalias() #12
@@ -1037,6 +1406,20 @@ exit:
 define void @instructions.call_musttail(i8* inalloca %val) {
   musttail call void @f.param.inalloca(i8* inalloca %val)
   ; CHECK: musttail call void @f.param.inalloca(i8* inalloca %val)
+
+  ret void
+}
+
+define void @instructions.strictfp() #44 {
+  call void @f.strictfp() strictfp
+  ; CHECK: call void @f.strictfp() #44
+
+  ret void
+}
+
+define void @instructions.call_notail() {
+  notail call void @f1()
+  ; CHECK: notail call void @f1()
 
   ret void
 }
@@ -1138,7 +1521,7 @@ declare void @llvm.write_register.i32(metadata, i32)
 declare void @llvm.write_register.i64(metadata, i64)
 declare i8* @llvm.stacksave()
 declare void @llvm.stackrestore(i8*)
-declare void @llvm.prefetch(i8*, i32, i32, i32)
+declare void @llvm.prefetch.p0i8(i8*, i32, i32, i32)
 declare void @llvm.pcmarker(i32)
 declare i64 @llvm.readcyclecounter()
 declare void @llvm.clear_cache(i8*, i8*)
@@ -1149,7 +1532,7 @@ define void @intrinsics.codegen() {
   call i8* @llvm.returnaddress(i32 1)
   ; CHECK: call i8* @llvm.returnaddress(i32 1)
   call i8* @llvm.frameaddress(i32 1)
-  ; CHECK: call i8* @llvm.frameaddress(i32 1)
+  ; CHECK: call i8* @llvm.frameaddress.p0i8(i32 1)
 
   call i32 @llvm.read_register.i32(metadata !10)
   ; CHECK: call i32 @llvm.read_register.i32(metadata !10)
@@ -1165,8 +1548,8 @@ define void @intrinsics.codegen() {
   call void @llvm.stackrestore(i8* %stack)
   ; CHECK: call void @llvm.stackrestore(i8* %stack)
 
-  call void @llvm.prefetch(i8* %stack, i32 0, i32 3, i32 0)
-  ; CHECK: call void @llvm.prefetch(i8* %stack, i32 0, i32 3, i32 0)
+  call void @llvm.prefetch.p0i8(i8* %stack, i32 0, i32 3, i32 0)
+  ; CHECK: call void @llvm.prefetch.p0i8(i8* %stack, i32 0, i32 3, i32 0)
 
   call void @llvm.pcmarker(i32 1)
   ; CHECK: call void @llvm.pcmarker(i32 1)
@@ -1212,6 +1595,201 @@ define void @misc.metadata() {
   ret void
 }
 
+declare void @op_bundle_callee_0()
+declare void @op_bundle_callee_1(i32,i32)
+
+define void @call_with_operand_bundle0(i32* %ptr) {
+; CHECK-LABEL: call_with_operand_bundle0(
+ entry:
+  %l = load i32, i32* %ptr
+  %x = add i32 42, 1
+  call void @op_bundle_callee_0() [ "foo"(i32 42, i64 100, i32 %x), "bar"(float  0.000000e+00, i64 100, i32 %l) ]
+; CHECK: call void @op_bundle_callee_0() [ "foo"(i32 42, i64 100, i32 %x), "bar"(float  0.000000e+00, i64 100, i32 %l) ]
+  ret void
+}
+
+define void @call_with_operand_bundle1(i32* %ptr) {
+; CHECK-LABEL: call_with_operand_bundle1(
+ entry:
+  %l = load i32, i32* %ptr
+  %x = add i32 42, 1
+
+  call void @op_bundle_callee_0()
+  call void @op_bundle_callee_0() [ "foo"() ]
+  call void @op_bundle_callee_0() [ "foo"(i32 42, i64 100, i32 %x), "bar"(float  0.000000e+00, i64 100, i32 %l) ]
+; CHECK: @op_bundle_callee_0(){{$}}
+; CHECK-NEXT: call void @op_bundle_callee_0() [ "foo"() ]
+; CHECK-NEXT: call void @op_bundle_callee_0() [ "foo"(i32 42, i64 100, i32 %x), "bar"(float  0.000000e+00, i64 100, i32 %l) ]
+  ret void
+}
+
+define void @call_with_operand_bundle2(i32* %ptr) {
+; CHECK-LABEL: call_with_operand_bundle2(
+ entry:
+  call void @op_bundle_callee_0() [ "foo"() ]
+; CHECK: call void @op_bundle_callee_0() [ "foo"() ]
+  ret void
+}
+
+define void @call_with_operand_bundle3(i32* %ptr) {
+; CHECK-LABEL: call_with_operand_bundle3(
+ entry:
+  %l = load i32, i32* %ptr
+  %x = add i32 42, 1
+  call void @op_bundle_callee_0() [ "foo"(i32 42, i64 100, i32 %x), "foo"(i32 42, float  0.000000e+00, i32 %l) ]
+; CHECK: call void @op_bundle_callee_0() [ "foo"(i32 42, i64 100, i32 %x), "foo"(i32 42, float  0.000000e+00, i32 %l) ]
+  ret void
+}
+
+define void @call_with_operand_bundle4(i32* %ptr) {
+; CHECK-LABEL: call_with_operand_bundle4(
+ entry:
+  %l = load i32, i32* %ptr
+  %x = add i32 42, 1
+  call void @op_bundle_callee_1(i32 10, i32 %x) [ "foo"(i32 42, i64 100, i32 %x), "foo"(i32 42, float  0.000000e+00, i32 %l) ]
+; CHECK: call void @op_bundle_callee_1(i32 10, i32 %x) [ "foo"(i32 42, i64 100, i32 %x), "foo"(i32 42, float  0.000000e+00, i32 %l) ]
+  ret void
+}
+
+; Invoke versions of the above tests:
+
+
+define void @invoke_with_operand_bundle0(i32* %ptr) personality i8 3 {
+; CHECK-LABEL: @invoke_with_operand_bundle0(
+ entry:
+  %l = load i32, i32* %ptr
+  %x = add i32 42, 1
+  invoke void @op_bundle_callee_0() [ "foo"(i32 42, i64 100, i32 %x), "bar"(float  0.000000e+00, i64 100, i32 %l) ] to label %normal unwind label %exception
+; CHECK: invoke void @op_bundle_callee_0() [ "foo"(i32 42, i64 100, i32 %x), "bar"(float  0.000000e+00, i64 100, i32 %l) ]
+
+exception:
+  %cleanup = landingpad i8 cleanup
+  br label %normal
+normal:
+  ret void
+}
+
+define void @invoke_with_operand_bundle1(i32* %ptr) personality i8 3 {
+; CHECK-LABEL: @invoke_with_operand_bundle1(
+ entry:
+  %l = load i32, i32* %ptr
+  %x = add i32 42, 1
+
+  invoke void @op_bundle_callee_0() to label %normal unwind label %exception
+; CHECK: invoke void @op_bundle_callee_0(){{$}}
+
+exception:
+  %cleanup = landingpad i8 cleanup
+  br label %normal
+
+normal:
+  invoke void @op_bundle_callee_0() [ "foo"() ] to label %normal1 unwind label %exception1
+; CHECK: invoke void @op_bundle_callee_0() [ "foo"() ]
+
+exception1:
+  %cleanup1 = landingpad i8 cleanup
+  br label %normal1
+
+normal1:
+  invoke void @op_bundle_callee_0() [ "foo"(i32 42, i64 100, i32 %x), "foo"(i32 42, float  0.000000e+00, i32 %l) ] to label %normal2 unwind label %exception2
+; CHECK: invoke void @op_bundle_callee_0() [ "foo"(i32 42, i64 100, i32 %x), "foo"(i32 42, float  0.000000e+00, i32 %l) ]
+
+exception2:
+  %cleanup2 = landingpad i8 cleanup
+  br label %normal2
+
+normal2:
+  ret void
+}
+
+define void @invoke_with_operand_bundle2(i32* %ptr) personality i8 3 {
+; CHECK-LABEL: @invoke_with_operand_bundle2(
+ entry:
+  invoke void @op_bundle_callee_0() [ "foo"() ] to label %normal unwind label %exception
+; CHECK: invoke void @op_bundle_callee_0() [ "foo"() ]
+
+exception:
+  %cleanup = landingpad i8 cleanup
+  br label %normal
+normal:
+  ret void
+}
+
+define void @invoke_with_operand_bundle3(i32* %ptr) personality i8 3 {
+; CHECK-LABEL: @invoke_with_operand_bundle3(
+ entry:
+  %l = load i32, i32* %ptr
+  %x = add i32 42, 1
+  invoke void @op_bundle_callee_0() [ "foo"(i32 42, i64 100, i32 %x), "foo"(i32 42, float  0.000000e+00, i32 %l) ] to label %normal unwind label %exception
+; CHECK: invoke void @op_bundle_callee_0() [ "foo"(i32 42, i64 100, i32 %x), "foo"(i32 42, float  0.000000e+00, i32 %l) ]
+
+exception:
+  %cleanup = landingpad i8 cleanup
+  br label %normal
+normal:
+  ret void
+}
+
+define void @invoke_with_operand_bundle4(i32* %ptr) personality i8 3 {
+; CHECK-LABEL: @invoke_with_operand_bundle4(
+ entry:
+  %l = load i32, i32* %ptr
+  %x = add i32 42, 1
+  invoke void @op_bundle_callee_1(i32 10, i32 %x) [ "foo"(i32 42, i64 100, i32 %x), "foo"(i32 42, float  0.000000e+00, i32 %l) ]
+        to label %normal unwind label %exception
+; CHECK: invoke void @op_bundle_callee_1(i32 10, i32 %x) [ "foo"(i32 42, i64 100, i32 %x), "foo"(i32 42, float  0.000000e+00, i32 %l) ]
+
+exception:
+  %cleanup = landingpad i8 cleanup
+  br label %normal
+normal:
+  ret void
+}
+
+declare void @vaargs_func(...)
+define void @invoke_with_operand_bundle_vaarg(i32* %ptr) personality i8 3 {
+; CHECK-LABEL: @invoke_with_operand_bundle_vaarg(
+ entry:
+  %l = load i32, i32* %ptr
+  %x = add i32 42, 1
+  invoke void (...) @vaargs_func(i32 10, i32 %x) [ "foo"(i32 42, i64 100, i32 %x), "foo"(i32 42, float  0.000000e+00, i32 %l) ]
+        to label %normal unwind label %exception
+; CHECK: invoke void (...) @vaargs_func(i32 10, i32 %x) [ "foo"(i32 42, i64 100, i32 %x), "foo"(i32 42, float  0.000000e+00, i32 %l) ]
+
+exception:
+  %cleanup = landingpad i8 cleanup
+  br label %normal
+normal:
+  ret void
+}
+
+
+declare void @f.writeonly() writeonly
+; CHECK: declare void @f.writeonly() #41
+
+declare void @f.speculatable() speculatable
+; CHECK: declare void @f.speculatable() #42
+
+;; Constant Expressions
+
+define i8** @constexpr() {
+  ; CHECK: ret i8** getelementptr inbounds ({ [4 x i8*], [4 x i8*] }, { [4 x i8*], [4 x i8*] }* null, i32 0, inrange i32 1, i32 2)
+  ret i8** getelementptr inbounds ({ [4 x i8*], [4 x i8*] }, { [4 x i8*], [4 x i8*] }* null, i32 0, inrange i32 1, i32 2)
+}
+
+; immarg attribute
+declare void @llvm.test.immarg.intrinsic(i32 immarg)
+; CHECK: declare void @llvm.test.immarg.intrinsic(i32 immarg)
+
+; byval attribute with type
+%named_type = type [8 x i8]
+declare void @byval_type(i32* byval(i32) align 2)
+declare void @byval_type2({ i8, i8* }* byval({ i8, i8* }))
+declare void @byval_named_type(%named_type* byval(%named_type))
+; CHECK: declare void @byval_type(i32* byval(i32) align 2)
+; CHECK: declare void @byval_type2({ i8, i8* }* byval({ i8, i8* }))
+; CHECK: declare void @byval_named_type([8 x i8]* byval([8 x i8]))
+
 ; CHECK: attributes #0 = { alignstack=4 }
 ; CHECK: attributes #1 = { alignstack=8 }
 ; CHECK: attributes #2 = { alwaysinline }
@@ -1244,9 +1822,19 @@ define void @misc.metadata() {
 ; CHECK: attributes #29 = { "thunk" }
 ; CHECK: attributes #30 = { uwtable }
 ; CHECK: attributes #31 = { "cpu"="cortex-a8" }
-; CHECK: attributes #32 = { nounwind readnone }
-; CHECK: attributes #33 = { nounwind readonly }
-; CHECK: attributes #34 = { builtin }
+; CHECK: attributes #32 = { norecurse }
+; CHECK: attributes #33 = { inaccessiblememonly }
+; CHECK: attributes #34 = { inaccessiblemem_or_argmemonly }
+; CHECK: attributes #35 = { nounwind readnone willreturn }
+; CHECK: attributes #36 = { argmemonly nounwind readonly }
+; CHECK: attributes #37 = { argmemonly nounwind }
+; CHECK: attributes #38 = { nounwind readnone }
+; CHECK: attributes #39 = { nounwind readonly }
+; CHECK: attributes #40 = { inaccessiblemem_or_argmemonly nounwind willreturn }
+; CHECK: attributes #41 = { writeonly }
+; CHECK: attributes #42 = { speculatable }
+; CHECK: attributes #43 = { builtin }
+; CHECK: attributes #44 = { strictfp }
 
 ;; Metadata
 

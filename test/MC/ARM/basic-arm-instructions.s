@@ -349,6 +349,8 @@ Lforward:
     and r6, r7, r8, ror r2
     and r10, r1, r6, rrx
     and r2, r3, #0x7fffffff
+    and sp, sp, #0x7fffffff
+    and pc, pc, #0x7fffffff
 
     @ destination register is optional
     and r1, #0xf
@@ -397,6 +399,8 @@ Lforward:
 @ CHECK: and	r6, r7, r8, ror r2      @ encoding: [0x78,0x62,0x07,0xe0]
 @ CHECK: and	r10, r1, r6, rrx        @ encoding: [0x66,0xa0,0x01,0xe0]
 @ CHECK: bic	r2, r3, #-2147483648    @ encoding: [0x02,0x21,0xc3,0xe3]
+@ CHECK: bic	sp, sp, #-2147483648    @ encoding: [0x02,0xd1,0xcd,0xe3]
+@ CHECK: bic	pc, pc, #-2147483648    @ encoding: [0x02,0xf1,0xcf,0xe3]
 
 @ CHECK: and	r1, r1, #15             @ encoding: [0x0f,0x10,0x01,0xe2]
 @ CHECK: and	r1, r1, #15             @ encoding: [0x0f,0x10,0x01,0xe2]
@@ -502,6 +506,10 @@ Lforward:
         bic r6, r7, r8, asr r2
         bic r6, r7, r8, ror r2
         bic r10, r1, r6, rrx
+        bic r2, r3, #0x7fffffff
+        bic sp, sp, #0x7fffffff
+        bic pc, pc, #0x7fffffff
+
 
         @ destination register is optional
         bic r1, #0xf
@@ -548,6 +556,9 @@ Lforward:
 @ CHECK: bic	r6, r7, r8, asr r2      @ encoding: [0x58,0x62,0xc7,0xe1]
 @ CHECK: bic	r6, r7, r8, ror r2      @ encoding: [0x78,0x62,0xc7,0xe1]
 @ CHECK: bic	r10, r1, r6, rrx        @ encoding: [0x66,0xa0,0xc1,0xe1]
+@ CHECK: and  r2, r3, #-2147483648    @ encoding: [0x02,0x21,0x03,0xe2]
+@ CHECK: and  sp, sp, #-2147483648    @ encoding: [0x02,0xd1,0x0d,0xe2]
+@ CHECK: and  pc, pc, #-2147483648    @ encoding: [0x02,0xf1,0x0f,0xe2]
 
 
 @ CHECK: bic	r1, r1, #15             @ encoding: [0x0f,0x10,0xc1,0xe3]
@@ -780,9 +791,11 @@ Lforward:
 @ CPS
 @------------------------------------------------------------------------------
         cpsie  aif
+        cpsie  AIF
         cps  #15
         cpsid  if, #10
 
+@ CHECK: cpsie  aif @ encoding: [0xc0,0x01,0x08,0xf1]
 @ CHECK: cpsie  aif @ encoding: [0xc0,0x01,0x08,0xf1]
 @ CHECK: cps  #15 @ encoding: [0x0f,0x00,0x02,0xf1]
 @ CHECK: cpsid  if, #10 @ encoding: [0xca,0x00,0x0e,0xf1]
@@ -913,11 +926,11 @@ Lforward:
 @ CHECK: dsb	nsh                     @ encoding: [0x47,0xf0,0x7f,0xf5]
 @ CHECK: dsb	nshst                   @ encoding: [0x46,0xf0,0x7f,0xf5]
 @ CHECK: dsb	#0x5                    @ encoding: [0x45,0xf0,0x7f,0xf5]
-@ CHECK: dsb	#0x4                    @ encoding: [0x44,0xf0,0x7f,0xf5]
+@ CHECK: pssbb                          @ encoding: [0x44,0xf0,0x7f,0xf5]
 @ CHECK: dsb	osh                     @ encoding: [0x43,0xf0,0x7f,0xf5]
 @ CHECK: dsb	oshst                   @ encoding: [0x42,0xf0,0x7f,0xf5]
 @ CHECK: dsb	#0x1                    @ encoding: [0x41,0xf0,0x7f,0xf5]
-@ CHECK: dsb	#0x0                    @ encoding: [0x40,0xf0,0x7f,0xf5]
+@ CHECK: ssbb                           @ encoding: [0x40,0xf0,0x7f,0xf5]
 
 @ CHECK: dsb	#0x8                    @ encoding: [0x48,0xf0,0x7f,0xf5]
 @ CHECK: dsb	nsh                     @ encoding: [0x47,0xf0,0x7f,0xf5]
@@ -1231,11 +1244,17 @@ Lforward:
 @------------------------------------------------------------------------------
         mcr  p7, #1, r5, c1, c1, #4
         mcr2  p7, #1, r5, c1, c1, #4
+        MCR  P7, #1, R5, C1, C1, #4
+        MCR2  P7, #1, R5, C1, C1, #4
 
+@ CHECK: mcr  p7, #1, r5, c1, c1, #4    @ encoding: [0x91,0x57,0x21,0xee]
+@ CHECK: mcr2  p7, #1, r5, c1, c1, #4   @ encoding: [0x91,0x57,0x21,0xfe]
 @ CHECK: mcr  p7, #1, r5, c1, c1, #4    @ encoding: [0x91,0x57,0x21,0xee]
 @ CHECK: mcr2  p7, #1, r5, c1, c1, #4   @ encoding: [0x91,0x57,0x21,0xfe]
 
         mcrls  p7, #1, r5, c1, c1, #4
+        MCRLS  P7, #1, R5, C1, C1, #4
+@ CHECK: mcrls  p7, #1, r5, c1, c1, #4   @ encoding: [0x91,0x57,0x21,0x9e]
 @ CHECK: mcrls  p7, #1, r5, c1, c1, #4   @ encoding: [0x91,0x57,0x21,0x9e]
 
 @------------------------------------------------------------------------------
@@ -1243,11 +1262,17 @@ Lforward:
 @------------------------------------------------------------------------------
         mcrr  p7, #15, r5, r4, c1
         mcrr2  p7, #15, r5, r4, c1
+        MCRR  P7, #15, R5, R4, C1
+        MCRR2  P7, #15, R5, R4, C1
 
+@ CHECK: mcrr  p7, #15, r5, r4, c1      @ encoding: [0xf1,0x57,0x44,0xec]
+@ CHECK: mcrr2  p7, #15, r5, r4, c1     @ encoding: [0xf1,0x57,0x44,0xfc]
 @ CHECK: mcrr  p7, #15, r5, r4, c1      @ encoding: [0xf1,0x57,0x44,0xec]
 @ CHECK: mcrr2  p7, #15, r5, r4, c1     @ encoding: [0xf1,0x57,0x44,0xfc]
 
         mcrrgt  p7, #15, r5, r4, c1
+        MCRRGT  P7, #15, R5, R4, C1
+@ CHECK: mcrrgt  p7, #15, r5, r4, c1     @ encoding: [0xf1,0x57,0x44,0xcc]
 @ CHECK: mcrrgt  p7, #15, r5, r4, c1     @ encoding: [0xf1,0x57,0x44,0xcc]
 
 @------------------------------------------------------------------------------
@@ -1372,13 +1397,23 @@ Lforward:
         mrc  p15, #7, apsr_nzcv, c15, c6, #6
         mrc2  p14, #0, r1, c1, c2, #4
         mrc2  p9, #7, apsr_nzcv, c15, c0, #1
+        MRC  P14, #0, R1, C1, C2, #4
+        MRC  P15, #7, APSR_NZCV, C15, C6, #6
+        MRC2  P14, #0, R1, C1, C2, #4
+        MRC2  P9, #7, APSR_NZCV, C15, C0, #1
 
+@ CHECK: mrc  p14, #0, r1, c1, c2, #4             @ encoding: [0x92,0x1e,0x11,0xee]
+@ CHECK: mrc  p15, #7, apsr_nzcv, c15, c6, #6     @ encoding: [0xd6,0xff,0xff,0xee]
+@ CHECK: mrc2  p14, #0, r1, c1, c2, #4            @ encoding: [0x92,0x1e,0x11,0xfe]
+@ CHECK: mrc2  p9, #7, apsr_nzcv, c15, c0, #1     @ encoding: [0x30,0xf9,0xff,0xfe]
 @ CHECK: mrc  p14, #0, r1, c1, c2, #4             @ encoding: [0x92,0x1e,0x11,0xee]
 @ CHECK: mrc  p15, #7, apsr_nzcv, c15, c6, #6     @ encoding: [0xd6,0xff,0xff,0xee]
 @ CHECK: mrc2  p14, #0, r1, c1, c2, #4            @ encoding: [0x92,0x1e,0x11,0xfe]
 @ CHECK: mrc2  p9, #7, apsr_nzcv, c15, c0, #1     @ encoding: [0x30,0xf9,0xff,0xfe]
 
          mrceq  p15, #7, apsr_nzcv, c15, c6, #6
+         MRCEQ  P15, #7, APSR_NZCV, C15, C6, #6
+@ CHECK: mrceq  p15, #7, apsr_nzcv, c15, c6, #6   @ encoding: [0xd6,0xff,0xff,0x0e]
 @ CHECK: mrceq  p15, #7, apsr_nzcv, c15, c6, #6   @ encoding: [0xd6,0xff,0xff,0x0e]
 
 @------------------------------------------------------------------------------
@@ -1386,11 +1421,17 @@ Lforward:
 @------------------------------------------------------------------------------
         mrrc  p7, #1, r5, r4, c1
         mrrc2  p7, #1, r5, r4, c1
+        MRRC  P7, #1, R5, R4, C1
+        MRRC2  P7, #1, R5, R4, C1
 
+@ CHECK: mrrc  p7, #1, r5, r4, c1       @ encoding: [0x11,0x57,0x54,0xec]
+@ CHECK: mrrc2  p7, #1, r5, r4, c1      @ encoding: [0x11,0x57,0x54,0xfc]
 @ CHECK: mrrc  p7, #1, r5, r4, c1       @ encoding: [0x11,0x57,0x54,0xec]
 @ CHECK: mrrc2  p7, #1, r5, r4, c1      @ encoding: [0x11,0x57,0x54,0xfc]
 
         mrrclo  p7, #1, r5, r4, c1
+        MRRCLO  P7, #1, R5, R4, C1
+@ CHECK: mrrclo  p7, #1, r5, r4, c1      @ encoding: [0x11,0x57,0x54,0x3c]
 @ CHECK: mrrclo  p7, #1, r5, r4, c1      @ encoding: [0x11,0x57,0x54,0x3c]
 
 @------------------------------------------------------------------------------
@@ -1738,7 +1779,7 @@ Lforward:
 @ CHECK: pkhbt	r2, r2, r3              @ encoding: [0x13,0x20,0x82,0xe6]
 @ CHECK: pkhbt	r2, r2, r3, lsl #15     @ encoding: [0x93,0x27,0x82,0xe6]
 
-@ CHECK: pkhbt	r2, r2, r3              @ encoding: [0x13,0x20,0x82,0xe6]
+@ CHECK: pkhbt	r2, r3, r2              @ encoding: [0x12,0x20,0x83,0xe6]
 @ CHECK: pkhtb	r2, r2, r3, asr #31     @ encoding: [0xd3,0x2f,0x82,0xe6]
 @ CHECK: pkhtb	r2, r2, r3, asr #15     @ encoding: [0xd3,0x27,0x82,0xe6]
 

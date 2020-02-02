@@ -1,11 +1,11 @@
-; RUN: llc -march=x86-64 -asm-verbose=false < %s | FileCheck %s
+; RUN: llc -mtriple=x86_64-- -asm-verbose=false < %s -jump-table-density=40 -switch-peel-threshold=101 | FileCheck %s
 
 ; This switch should use bit tests, and the third bit test case is just
 ; testing for one possible value, so it doesn't need a bt.
 
 ;      CHECK: movabsq $2305843009482129440, %r
 ; CHECK-NEXT: btq %rax, %r
-; CHECK-NEXT: jae
+; CHECK-NEXT: jb
 ;     CHECK: movl  $671088640, %e
 ; CHECK-NEXT: btq %rax, %r
 ; CHECK-NEXT: jae
@@ -145,13 +145,52 @@ sw.epilog:
 ; CHECK: cmpl $10
 ; CHECK: je
 ; CHECK: cmpl $20
+; CHECK: je
+; CHECK: cmpl $30
 ; CHECK: jne
 ; CHECK: cmpl $40
 ; CHECK: je
 ; CHECK: cmpl $50
-; CHECK: jne
-; CHECK: cmpl $30
-; CHECK: jne
+; CHECK: je
 ; CHECK: cmpl $60
 ; CHECK: jne
+}
+
+
+; Omit the range check when the default case is unreachable, see PR43129.
+declare void @g(i32)
+define void @test5(i32 %x) {
+
+; CHECK-LABEL: test5
+; CHECK-NOT: cmp
+
+; 73 = 2^0 + 2^3 + 2^6
+; CHECK:      movl $73
+; CHECK-NEXT: btl
+; CHECK-NEXT: jb
+
+; 146 = 2^1 + 2^4 + 2^7
+; CHECK-NEXT: movl $146
+; CHECK-NEXT: btl
+; CHECK-NEXT: jae
+
+
+entry:
+  switch i32 %x, label %return [
+    i32 0, label %bb0
+    i32 3, label %bb0
+    i32 6, label %bb0
+
+    i32 1, label %bb1
+    i32 4, label %bb1
+    i32 7, label %bb1
+
+    i32 2, label %bb2
+    i32 5, label %bb2
+    i32 8, label %bb2
+  ]
+bb0: tail call void @g(i32 0) br label %return
+bb1: tail call void @g(i32 1) br label %return
+bb2: tail call void @g(i32 2) br label %return
+return: unreachable
 }

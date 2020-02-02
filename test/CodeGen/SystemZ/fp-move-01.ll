@@ -1,7 +1,6 @@
 ; Test moves between FPRs.
 ;
 ; RUN: llc < %s -mtriple=s390x-linux-gnu -mcpu=z10 | FileCheck %s
-; RUN: llc < %s -mtriple=s390x-linux-gnu -mcpu=z13 | FileCheck %s
 
 ; Test f32 moves.
 define float @f1(float %a, float %b) {
@@ -26,7 +25,7 @@ define void @f3(fp128 *%x) {
 ; CHECK: lxr
 ; CHECK: axbr
 ; CHECK: br %r14
-  %val = load volatile fp128 , fp128 *%x
+  %val = load volatile fp128, fp128 *%x
   %sum = fadd fp128 %val, %val
   store volatile fp128 %sum, fp128 *%x
   store volatile fp128 %val, fp128 *%x

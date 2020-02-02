@@ -1,9 +1,8 @@
 //====- TargetFolder.h - Constant folding helper ---------------*- C++ -*-====//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -34,9 +33,8 @@ class TargetFolder {
 
   /// Fold - Fold the constant using target specific information.
   Constant *Fold(Constant *C) const {
-    if (ConstantExpr *CE = dyn_cast<ConstantExpr>(C))
-      if (Constant *CF = ConstantFoldConstantExpression(CE, DL))
-        return CF;
+    if (Constant *CF = ConstantFoldConstant(C, DL))
+      return CF;
     return C;
   }
 
@@ -124,6 +122,10 @@ public:
   }
   Constant *CreateNot(Constant *C) const {
     return Fold(ConstantExpr::getNot(C));
+  }
+
+  Constant *CreateUnOp(Instruction::UnaryOps Opc, Constant *C) const {
+    return Fold(ConstantExpr::get(Opc, C));
   }
 
   //===--------------------------------------------------------------------===//

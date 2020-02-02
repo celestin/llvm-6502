@@ -1,9 +1,8 @@
 //===-- X86MachineFunctionInfo.h - X86 machine function info ----*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -16,8 +15,7 @@
 
 #include "llvm/CodeGen/CallingConvLower.h"
 #include "llvm/CodeGen/MachineFunction.h"
-#include "llvm/CodeGen/MachineValueType.h"
-#include <vector>
+#include "llvm/Support/MachineValueType.h"
 
 namespace llvm {
 
@@ -38,6 +36,10 @@ class X86MachineFunctionInfo : public MachineFunctionInfo {
   /// is stashed.
   signed char RestoreBasePointerOffset = 0;
 
+  /// WinEHXMMSlotInfo - Slot information of XMM registers in the stack frame
+  /// in bytes.
+  DenseMap<int, unsigned> WinEHXMMSlotInfo;
+
   /// CalleeSavedFrameSize - Size of the callee-saved register portion of the
   /// stack frame in bytes.
   unsigned CalleeSavedFrameSize = 0;
@@ -50,7 +52,7 @@ class X86MachineFunctionInfo : public MachineFunctionInfo {
   /// ReturnAddrIndex - FrameIndex for return slot.
   int ReturnAddrIndex = 0;
 
-  /// \brief FrameIndex for return slot.
+  /// FrameIndex for return slot.
   int FrameAddrIndex = 0;
 
   /// TailCallReturnAddrDelta - The number of bytes by which return address
@@ -84,13 +86,23 @@ class X86MachineFunctionInfo : public MachineFunctionInfo {
   /// of pushes to pass function parameters.
   bool HasPushSequences = false;
 
-  /// True if the function uses llvm.x86.seh.restoreframe, and it needed a spill
-  /// slot for the frame pointer.
+  /// True if the function recovers from an SEH exception, and therefore needs
+  /// to spill and restore the frame pointer.
   bool HasSEHFramePtrSave = false;
 
   /// The frame index of a stack object containing the original frame pointer
   /// used to address arguments in a function using a base pointer.
   int SEHFramePtrSaveIndex = 0;
+
+  /// True if this function has a subset of CSRs that is handled explicitly via
+  /// copies.
+  bool IsSplitCSR = false;
+
+  /// True if this function uses the red zone.
+  bool UsesRedZone = false;
+
+  /// True if this function has WIN_ALLOCA instructions.
+  bool HasWinAlloca = false;
 
 private:
   /// ForwardedMustTailRegParms - A list of virtual and physical registers
@@ -111,6 +123,10 @@ public:
   bool getRestoreBasePointer() const { return RestoreBasePointerOffset!=0; }
   void setRestoreBasePointer(const MachineFunction *MF);
   int getRestoreBasePointerOffset() const {return RestoreBasePointerOffset; }
+
+  DenseMap<int, unsigned>& getWinEHXMMSlotInfo() { return WinEHXMMSlotInfo; }
+  const DenseMap<int, unsigned>& getWinEHXMMSlotInfo() const {
+    return WinEHXMMSlotInfo; }
 
   unsigned getCalleeSavedFrameSize() const { return CalleeSavedFrameSize; }
   void setCalleeSavedFrameSize(unsigned bytes) { CalleeSavedFrameSize = bytes; }
@@ -160,6 +176,15 @@ public:
   SmallVectorImpl<ForwardedRegister> &getForwardedMustTailRegParms() {
     return ForwardedMustTailRegParms;
   }
+
+  bool isSplitCSR() const { return IsSplitCSR; }
+  void setIsSplitCSR(bool s) { IsSplitCSR = s; }
+
+  bool getUsesRedZone() const { return UsesRedZone; }
+  void setUsesRedZone(bool V) { UsesRedZone = V; }
+
+  bool hasWinAlloca() const { return HasWinAlloca; }
+  void setHasWinAlloca(bool v) { HasWinAlloca = v; }
 };
 
 } // End llvm namespace

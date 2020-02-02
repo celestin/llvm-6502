@@ -1,9 +1,8 @@
 //===-- PPCTargetObjectFile.cpp - PPC Object Info -------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -23,8 +22,7 @@ Initialize(MCContext &Ctx, const TargetMachine &TM) {
 }
 
 MCSection *PPC64LinuxTargetObjectFile::SelectSectionForGlobal(
-    const GlobalValue *GV, SectionKind Kind, Mangler &Mang,
-    const TargetMachine &TM) const {
+    const GlobalObject *GO, SectionKind Kind, const TargetMachine &TM) const {
   // Here override ReadOnlySection to DataRelROSection for PPC64 SVR4 ABI
   // when we have a constant that contains global relocations.  This is
   // necessary because of this ABI's handling of pointers to functions in
@@ -40,22 +38,19 @@ MCSection *PPC64LinuxTargetObjectFile::SelectSectionForGlobal(
   // For more information, see the description of ELIMINATE_COPY_RELOCS in
   // GNU ld.
   if (Kind.isReadOnly()) {
-    const GlobalVariable *GVar = dyn_cast<GlobalVariable>(GV);
+    const auto *GVar = dyn_cast<GlobalVariable>(GO);
 
-    if (GVar && GVar->isConstant() &&
-        (GVar->getInitializer()->getRelocationInfo() ==
-         Constant::GlobalRelocations))
+    if (GVar && GVar->isConstant() && GVar->getInitializer()->needsRelocation())
       Kind = SectionKind::getReadOnlyWithRel();
   }
 
-  return TargetLoweringObjectFileELF::SelectSectionForGlobal(GV, Kind,
-                                                             Mang, TM);
+  return TargetLoweringObjectFileELF::SelectSectionForGlobal(GO, Kind, TM);
 }
 
 const MCExpr *PPC64LinuxTargetObjectFile::
 getDebugThreadLocalSymbol(const MCSymbol *Sym) const {
   const MCExpr *Expr =
-    MCSymbolRefExpr::create(Sym, MCSymbolRefExpr::VK_PPC_DTPREL, getContext());
+    MCSymbolRefExpr::create(Sym, MCSymbolRefExpr::VK_DTPREL, getContext());
   return MCBinaryExpr::createAdd(Expr,
                                  MCConstantExpr::create(0x8000, getContext()),
                                  getContext());

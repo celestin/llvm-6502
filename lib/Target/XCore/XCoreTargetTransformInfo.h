@@ -1,9 +1,8 @@
 //===-- XCoreTargetTransformInfo.h - XCore specific TTI ---------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 /// \file
@@ -21,7 +20,7 @@
 #include "XCoreTargetMachine.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/CodeGen/BasicTTIImpl.h"
-#include "llvm/Target/TargetLowering.h"
+#include "llvm/CodeGen/TargetLowering.h"
 
 namespace llvm {
 
@@ -37,18 +36,12 @@ class XCoreTTIImpl : public BasicTTIImplBase<XCoreTTIImpl> {
   const XCoreTargetLowering *getTLI() const { return TLI; }
 
 public:
-  explicit XCoreTTIImpl(const XCoreTargetMachine *TM, Function &F)
+  explicit XCoreTTIImpl(const XCoreTargetMachine *TM, const Function &F)
       : BaseT(TM, F.getParent()->getDataLayout()), ST(TM->getSubtargetImpl()),
         TLI(ST->getTargetLowering()) {}
 
-  // Provide value semantics. MSVC requires that we spell all of these out.
-  XCoreTTIImpl(const XCoreTTIImpl &Arg)
-      : BaseT(static_cast<const BaseT &>(Arg)), ST(Arg.ST), TLI(Arg.TLI) {}
-  XCoreTTIImpl(XCoreTTIImpl &&Arg)
-      : BaseT(std::move(static_cast<BaseT &>(Arg))), ST(std::move(Arg.ST)),
-        TLI(std::move(Arg.TLI)) {}
-
-  unsigned getNumberOfRegisters(bool Vector) {
+  unsigned getNumberOfRegisters(unsigned ClassID) const {
+    bool Vector = (ClassID == 1);
     if (Vector) {
       return 0;
     }

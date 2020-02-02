@@ -1,9 +1,8 @@
 //===-- PDBContext.h --------------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===/
 
@@ -12,49 +11,57 @@
 
 #include "llvm/DebugInfo/DIContext.h"
 #include "llvm/DebugInfo/PDB/IPDBSession.h"
+#include <cstdint>
+#include <memory>
+#include <string>
 
 namespace llvm {
 
 namespace object {
 class COFFObjectFile;
-}
+} // end namespace object
 
-/// PDBContext
-/// This data structure is the top level entity that deals with PDB debug
-/// information parsing.  This data structure exists only when there is a
-/// need for a transparent interface to different debug information formats
-/// (e.g. PDB and DWARF).  More control and power over the debug information
-/// access can be had by using the PDB interfaces directly.
-class PDBContext : public DIContext {
+namespace pdb {
 
-  PDBContext(PDBContext &) = delete;
-  PDBContext &operator=(PDBContext &) = delete;
+  /// PDBContext
+  /// This data structure is the top level entity that deals with PDB debug
+  /// information parsing.  This data structure exists only when there is a
+  /// need for a transparent interface to different debug information formats
+  /// (e.g. PDB and DWARF).  More control and power over the debug information
+  /// access can be had by using the PDB interfaces directly.
+  class PDBContext : public DIContext {
+  public:
+    PDBContext(const object::COFFObjectFile &Object,
+               std::unique_ptr<IPDBSession> PDBSession);
+    PDBContext(PDBContext &) = delete;
+    PDBContext &operator=(PDBContext &) = delete;
 
-public:
-  PDBContext(const object::COFFObjectFile &Object,
-             std::unique_ptr<IPDBSession> PDBSession,
-             bool RelativeAddress);
+    static bool classof(const DIContext *DICtx) {
+      return DICtx->getKind() == CK_PDB;
+    }
 
-  static bool classof(const DIContext *DICtx) {
-    return DICtx->getKind() == CK_PDB;
-  }
+    void dump(raw_ostream &OS, DIDumpOptions DIDumpOpts) override;
 
-  void dump(raw_ostream &OS, DIDumpType DumpType = DIDT_All) override;
+    DILineInfo getLineInfoForAddress(
+        object::SectionedAddress Address,
+        DILineInfoSpecifier Specifier = DILineInfoSpecifier()) override;
+    DILineInfoTable getLineInfoForAddressRange(
+        object::SectionedAddress Address, uint64_t Size,
+        DILineInfoSpecifier Specifier = DILineInfoSpecifier()) override;
+    DIInliningInfo getInliningInfoForAddress(
+        object::SectionedAddress Address,
+        DILineInfoSpecifier Specifier = DILineInfoSpecifier()) override;
 
-  DILineInfo getLineInfoForAddress(
-      uint64_t Address,
-      DILineInfoSpecifier Specifier = DILineInfoSpecifier()) override;
-  DILineInfoTable getLineInfoForAddressRange(
-      uint64_t Address, uint64_t Size,
-      DILineInfoSpecifier Specifier = DILineInfoSpecifier()) override;
-  DIInliningInfo getInliningInfoForAddress(
-      uint64_t Address,
-      DILineInfoSpecifier Specifier = DILineInfoSpecifier()) override;
+    std::vector<DILocal>
+    getLocalsForAddress(object::SectionedAddress Address) override;
 
-private:
-  std::string getFunctionName(uint64_t Address, DINameKind NameKind) const;
-  std::unique_ptr<IPDBSession> Session;
-};
-}
+  private:
+    std::string getFunctionName(uint64_t Address, DINameKind NameKind) const;
+    std::unique_ptr<IPDBSession> Session;
+  };
 
-#endif
+} // end namespace pdb
+
+} // end namespace llvm
+
+#endif // LLVM_DEBUGINFO_PDB_PDBCONTEXT_H

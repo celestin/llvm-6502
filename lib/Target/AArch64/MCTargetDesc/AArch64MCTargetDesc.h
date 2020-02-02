@@ -1,9 +1,8 @@
 //===-- AArch64MCTargetDesc.h - AArch64 Target Descriptions -----*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -15,7 +14,8 @@
 #define LLVM_LIB_TARGET_AARCH64_MCTARGETDESC_AARCH64MCTARGETDESC_H
 
 #include "llvm/Support/DataTypes.h"
-#include <string>
+
+#include <memory>
 
 namespace llvm {
 class formatted_raw_ostream;
@@ -25,9 +25,10 @@ class MCContext;
 class MCInstrInfo;
 class MCInstPrinter;
 class MCRegisterInfo;
-class MCObjectWriter;
+class MCObjectTargetWriter;
 class MCStreamer;
 class MCSubtargetInfo;
+class MCTargetOptions;
 class MCTargetStreamer;
 class StringRef;
 class Target;
@@ -35,27 +36,26 @@ class Triple;
 class raw_ostream;
 class raw_pwrite_stream;
 
-extern Target TheAArch64leTarget;
-extern Target TheAArch64beTarget;
-extern Target TheARM64Target;
-
 MCCodeEmitter *createAArch64MCCodeEmitter(const MCInstrInfo &MCII,
                                           const MCRegisterInfo &MRI,
                                           MCContext &Ctx);
 MCAsmBackend *createAArch64leAsmBackend(const Target &T,
+                                        const MCSubtargetInfo &STI,
                                         const MCRegisterInfo &MRI,
-                                        const Triple &TT, StringRef CPU);
+                                        const MCTargetOptions &Options);
 MCAsmBackend *createAArch64beAsmBackend(const Target &T,
+                                        const MCSubtargetInfo &STI,
                                         const MCRegisterInfo &MRI,
-                                        const Triple &TT, StringRef CPU);
+                                        const MCTargetOptions &Options);
 
-MCObjectWriter *createAArch64ELFObjectWriter(raw_pwrite_stream &OS,
-                                             uint8_t OSABI,
-                                             bool IsLittleEndian);
+std::unique_ptr<MCObjectTargetWriter>
+createAArch64ELFObjectWriter(uint8_t OSABI, bool IsILP32);
 
-MCObjectWriter *createAArch64MachObjectWriter(raw_pwrite_stream &OS,
-                                              uint32_t CPUType,
-                                              uint32_t CPUSubtype);
+std::unique_ptr<MCObjectTargetWriter>
+createAArch64MachObjectWriter(uint32_t CPUType, uint32_t CPUSubtype,
+                              bool IsILP32);
+
+std::unique_ptr<MCObjectTargetWriter> createAArch64WinCOFFObjectWriter();
 
 MCTargetStreamer *createAArch64AsmTargetStreamer(MCStreamer &S,
                                                  formatted_raw_ostream &OS,
@@ -64,6 +64,10 @@ MCTargetStreamer *createAArch64AsmTargetStreamer(MCStreamer &S,
 
 MCTargetStreamer *createAArch64ObjectTargetStreamer(MCStreamer &S,
                                                     const MCSubtargetInfo &STI);
+
+namespace AArch64_MC {
+void initLLVMToCVRegMapping(MCRegisterInfo *MRI);
+}
 
 } // End llvm namespace
 
@@ -76,6 +80,7 @@ MCTargetStreamer *createAArch64ObjectTargetStreamer(MCStreamer &S,
 // Defines symbolic names for the AArch64 instructions.
 //
 #define GET_INSTRINFO_ENUM
+#define GET_INSTRINFO_MC_HELPER_DECLS
 #include "AArch64GenInstrInfo.inc"
 
 #define GET_SUBTARGETINFO_ENUM

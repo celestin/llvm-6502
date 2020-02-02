@@ -1,9 +1,8 @@
 //===- Interpreter.cpp - Top-Level LLVM Interpreter Implementation --------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -35,9 +34,13 @@ extern "C" void LLVMLinkInInterpreter() { }
 ExecutionEngine *Interpreter::create(std::unique_ptr<Module> M,
                                      std::string *ErrStr) {
   // Tell this Module to materialize everything and release the GVMaterializer.
-  if (std::error_code EC = M->materializeAllPermanently()) {
+  if (Error Err = M->materializeAll()) {
+    std::string Msg;
+    handleAllErrors(std::move(Err), [&](ErrorInfoBase &EIB) {
+      Msg = EIB.message();
+    });
     if (ErrStr)
-      *ErrStr = EC.message();
+      *ErrStr = Msg;
     // We got an error, just return 0
     return nullptr;
   }

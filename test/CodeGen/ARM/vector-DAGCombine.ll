@@ -78,11 +78,11 @@ entry:
   %2 = shufflevector <4 x i16> %1, <4 x i16> undef, <8 x i32> <i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7>
   %3 = add <8 x i16> %2, <i16 1, i16 1, i16 1, i16 1, i16 1, i16 1, i16 1, i16 1>
   %4 = trunc <8 x i16> %3 to <8 x i8>
-  tail call void @llvm.arm.neon.vst1.v8i8(i8* undef, <8 x i8> %4, i32 1)
+  tail call void @llvm.arm.neon.vst1.p0i8.v8i8(i8* undef, <8 x i8> %4, i32 1)
   unreachable
 }
 
-declare void @llvm.arm.neon.vst1.v8i8(i8*, <8 x i8>, i32) nounwind
+declare void @llvm.arm.neon.vst1.p0i8.v8i8(i8*, <8 x i8>, i32) nounwind
 
 ; Test that loads and stores of i64 vector elements are handled as f64 values
 ; so they are not split up into i32 values.  Radar 8755338.
@@ -237,17 +237,10 @@ entry:
 ; illegal type to a legal type.
 define <2 x i8> @test_truncate(<2 x i128> %in) {
 ; CHECK-LABEL: test_truncate:
-; CHECK: mov [[BASE:r[0-9]+]], sp
-; CHECK-NEXT: vld1.32 {[[REG1:d[0-9]+]][0]}, {{\[}}[[BASE]]:32]
-; CHECK-NEXT: add [[BASE2:r[0-9]+]], [[BASE]], #4
-; CHECK-NEXT: vld1.32 {[[REG1]][1]}, {{\[}}[[BASE2]]:32]
-; REG2 Should map on the same Q register as REG1, i.e., REG2 = REG1 - 1, but we
-; cannot express that.
-; CHECK-NEXT: vmov.32 [[REG2:d[0-9]+]][0], r0
-; CHECK-NEXT: vmov.32 [[REG2]][1], r1
-; The Q register used here should match floor(REG1/2), but we cannot express that.
-; CHECK-NEXT: vmovn.i64 [[RES:d[0-9]+]], q{{[0-9]+}}
-; CHECK-NEXT: vmov r0, r1, [[RES]]
+; CHECK: vmov.32 [[REG:d[0-9]+]][0], r0
+; CHECK-NEXT: mov [[BASE:r[0-9]+]], sp
+; CHECK-NEXT: vld1.32 {[[REG]][1]}, {{\[}}[[BASE]]:32]
+; CHECK-NEXT: vmov r0, r1, [[REG]]
 entry:
   %res = trunc <2 x i128> %in to <2 x i8>
   ret <2 x i8> %res

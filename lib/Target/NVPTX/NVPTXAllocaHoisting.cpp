@@ -1,9 +1,8 @@
 //===-- AllocaHoisting.cpp - Hoist allocas to the entry block --*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -12,7 +11,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "NVPTXAllocaHoisting.h"
-#include "llvm/CodeGen/MachineFunctionAnalysis.h"
 #include "llvm/CodeGen/StackProtector.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Function.h"
@@ -28,11 +26,10 @@ public:
   NVPTXAllocaHoisting() : FunctionPass(ID) {}
 
   void getAnalysisUsage(AnalysisUsage &AU) const override {
-    AU.addPreserved<MachineFunctionAnalysis>();
     AU.addPreserved<StackProtector>();
   }
 
-  const char *getPassName() const override {
+  StringRef getPassName() const override {
     return "NVPTX specific alloca hoisting";
   }
 
@@ -43,7 +40,7 @@ public:
 bool NVPTXAllocaHoisting::runOnFunction(Function &function) {
   bool functionModified = false;
   Function::iterator I = function.begin();
-  TerminatorInst *firstTerminatorInst = (I++)->getTerminator();
+  Instruction *firstTerminatorInst = (I++)->getTerminator();
 
   for (Function::iterator E = function.end(); I != E; ++I) {
     for (BasicBlock::iterator BI = I->begin(), BE = I->end(); BI != BE;) {

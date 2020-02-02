@@ -15,3 +15,17 @@ _test2:
 .att_syntax prefix
 	movl $255, -4(%rsp)
 // CHECK:	movl	$255, -4(%rsp)
+
+_test3:
+fadd 
+// CHECK: faddp %st, %st(1)
+fmul
+// CHECK: fmulp %st, %st(1)
+fsub
+// CHECK: fsubp %st, %st(1)
+fsubr
+// CHECK: fsubrp %st, %st(1)
+fdiv
+// CHECK: fdivp %st, %st(1)
+fdivr
+// CHECK: fdivrp %st, %st(1)

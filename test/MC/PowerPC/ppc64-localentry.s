@@ -1,8 +1,8 @@
 
 # RUN: llvm-mc -triple powerpc64-unknown-unknown -filetype=obj %s | \
-# RUN: llvm-readobj -h -r -symbols | FileCheck %s
+# RUN: llvm-readobj -h -r --symbols | FileCheck %s
 # RUN: llvm-mc -triple powerpc64le-unknown-unknown -filetype=obj %s | \
-# RUN: llvm-readobj -h -r -symbols | FileCheck %s
+# RUN: llvm-readobj -h -r --symbols | FileCheck %s
 
 	.type callee1, @function
 callee1:
@@ -61,7 +61,8 @@ copy2 = callee2
 # CHECK-NEXT:  Size: 16
 # CHECK-NEXT:  Binding: Local
 # CHECK-NEXT:  Type: Function
-# CHECK-NEXT:  Other: 96
+# CHECK-NEXT:  Other [ (0x60)
+# CHECK-NEXT:  ]
 # CHECK-NEXT:  Section: .text
 # CHECK:       Name: callee2
 # CHECK-NEXT:  Value:
@@ -77,7 +78,8 @@ copy2 = callee2
 # CHECK-NEXT:  Size: 16
 # CHECK-NEXT:  Binding: Local
 # CHECK-NEXT:  Type: Function
-# CHECK-NEXT:  Other: 96
+# CHECK-NEXT:  Other [ (0x60)
+# CHECK-NEXT:  ]
 # CHECK-NEXT:  Section: .text
 # CHECK:       Name: copy2
 # CHECK-NEXT:  Value:

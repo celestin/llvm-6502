@@ -10,7 +10,10 @@ Kaleidoscope: Implementing a Language with LLVM
    :glob:
    :numbered:
 
-   LangImpl*
+   MyFirstLanguageFrontend/index
+
+This is the "Kaleidoscope" Language tutorial, showing how to implement a simple
+language using LLVM components in C++.
 
 Kaleidoscope: Implementing a Language with LLVM in Objective Caml
 =================================================================
@@ -21,6 +24,16 @@ Kaleidoscope: Implementing a Language with LLVM in Objective Caml
    :numbered:
 
    OCamlLangImpl*
+
+Building a JIT in LLVM
+===============================================
+
+.. toctree::
+   :titlesonly:
+   :glob:
+   :numbered:
+
+   BuildingAJIT*
 
 External Tutorials
 ==================

@@ -1,9 +1,8 @@
 //===- SetTheory.cpp - Generate ordered sets from DAG expressions ---------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -12,18 +11,29 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/TableGen/SetTheory.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/Format.h"
+#include "llvm/Support/SMLoc.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/TableGen/Error.h"
 #include "llvm/TableGen/Record.h"
+#include "llvm/TableGen/SetTheory.h"
+#include <algorithm>
+#include <cstdint>
+#include <string>
+#include <utility>
 
 using namespace llvm;
 
 // Define the standard operators.
 namespace {
 
-typedef SetTheory::RecSet RecSet;
-typedef SetTheory::RecVec RecVec;
+using RecSet = SetTheory::RecSet;
+using RecVec = SetTheory::RecVec;
 
 // (add a, b, ...) Evaluate and union all arguments.
 struct AddOp : public SetTheory::Operator {
@@ -237,24 +247,24 @@ struct FieldExpander : public SetTheory::Expander {
     ST.evaluate(Def->getValueInit(FieldName), Elts, Def->getLoc());
   }
 };
+
 } // end anonymous namespace
 
 // Pin the vtables to this file.
 void SetTheory::Operator::anchor() {}
 void SetTheory::Expander::anchor() {}
 
-
 SetTheory::SetTheory() {
-  addOperator("add", llvm::make_unique<AddOp>());
-  addOperator("sub", llvm::make_unique<SubOp>());
-  addOperator("and", llvm::make_unique<AndOp>());
-  addOperator("shl", llvm::make_unique<ShlOp>());
-  addOperator("trunc", llvm::make_unique<TruncOp>());
-  addOperator("rotl", llvm::make_unique<RotOp>(false));
-  addOperator("rotr", llvm::make_unique<RotOp>(true));
-  addOperator("decimate", llvm::make_unique<DecimateOp>());
-  addOperator("interleave", llvm::make_unique<InterleaveOp>());
-  addOperator("sequence", llvm::make_unique<SequenceOp>());
+  addOperator("add", std::make_unique<AddOp>());
+  addOperator("sub", std::make_unique<SubOp>());
+  addOperator("and", std::make_unique<AndOp>());
+  addOperator("shl", std::make_unique<ShlOp>());
+  addOperator("trunc", std::make_unique<TruncOp>());
+  addOperator("rotl", std::make_unique<RotOp>(false));
+  addOperator("rotr", std::make_unique<RotOp>(true));
+  addOperator("decimate", std::make_unique<DecimateOp>());
+  addOperator("interleave", std::make_unique<InterleaveOp>());
+  addOperator("sequence", std::make_unique<SequenceOp>());
 }
 
 void SetTheory::addOperator(StringRef Name, std::unique_ptr<Operator> Op) {
@@ -266,7 +276,7 @@ void SetTheory::addExpander(StringRef ClassName, std::unique_ptr<Expander> E) {
 }
 
 void SetTheory::addFieldExpander(StringRef ClassName, StringRef FieldName) {
-  addExpander(ClassName, llvm::make_unique<FieldExpander>(FieldName));
+  addExpander(ClassName, std::make_unique<FieldExpander>(FieldName));
 }
 
 void SetTheory::evaluate(Init *Expr, RecSet &Elts, ArrayRef<SMLoc> Loc) {
@@ -302,12 +312,12 @@ const RecVec *SetTheory::expand(Record *Set) {
     return &I->second;
 
   // This is the first time we see Set. Find a suitable expander.
-  ArrayRef<Record *> SC = Set->getSuperClasses();
-  for (unsigned i = 0, e = SC.size(); i != e; ++i) {
+  ArrayRef<std::pair<Record *, SMRange>> SC = Set->getSuperClasses();
+  for (const auto &SCPair : SC) {
     // Skip unnamed superclasses.
-    if (!dyn_cast<StringInit>(SC[i]->getNameInit()))
+    if (!isa<StringInit>(SCPair.first->getNameInit()))
       continue;
-    auto I = Expanders.find(SC[i]->getName());
+    auto I = Expanders.find(SCPair.first->getName());
     if (I != Expanders.end()) {
       // This breaks recursive definitions.
       RecVec &EltVec = Expansions[Set];
@@ -321,4 +331,3 @@ const RecVec *SetTheory::expand(Record *Set) {
   // Set is not expandable.
   return nullptr;
 }
-

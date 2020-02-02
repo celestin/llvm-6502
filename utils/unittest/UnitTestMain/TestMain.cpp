@@ -1,16 +1,15 @@
 //===--- utils/unittest/UnitTestMain/TestMain.cpp - unittest driver -------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Signals.h"
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
-
 
 #if defined(_WIN32)
 # include <windows.h>
@@ -22,8 +21,12 @@
 const char *TestMainArgv0;
 
 int main(int argc, char **argv) {
-  llvm::sys::PrintStackTraceOnErrorSignal(true /* Disable crash reporting */);
-  testing::InitGoogleTest(&argc, argv);
+  llvm::sys::PrintStackTraceOnErrorSignal(argv[0],
+                                          true /* Disable crash reporting */);
+
+  // Initialize both gmock and gtest.
+  testing::InitGoogleMock(&argc, argv);
+
   llvm::cl::ParseCommandLineOptions(argc, argv);
 
   // Make it easy for a test to re-execute itself by saving argv[0].

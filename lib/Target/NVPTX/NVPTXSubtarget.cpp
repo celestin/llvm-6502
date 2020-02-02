@@ -1,9 +1,8 @@
 //===- NVPTXSubtarget.cpp - NVPTX Subtarget Information -------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -23,14 +22,17 @@ using namespace llvm;
 #define GET_SUBTARGETINFO_CTOR
 #include "NVPTXGenSubtargetInfo.inc"
 
+static cl::opt<bool>
+    NoF16Math("nvptx-no-f16-math", cl::ZeroOrMore, cl::Hidden,
+              cl::desc("NVPTX Specific: Disable generation of f16 math ops."),
+              cl::init(false));
+
 // Pin the vtable to this file.
 void NVPTXSubtarget::anchor() {}
 
 NVPTXSubtarget &NVPTXSubtarget::initializeSubtargetDependencies(StringRef CPU,
                                                                 StringRef FS) {
     // Provide the default CPU if we don't have one.
-  if (CPU.empty() && FS.size())
-    llvm_unreachable("we are not using FeatureStr");
   TargetName = CPU.empty() ? "sm_20" : CPU;
 
   ParseSubtargetFeatures(TargetName, FS);
@@ -58,4 +60,8 @@ bool NVPTXSubtarget::hasImageHandles() const {
 
   // Disabled, otherwise
   return false;
+}
+
+bool NVPTXSubtarget::allowFP16Math() const {
+  return hasFP16Math() && NoF16Math == false;
 }

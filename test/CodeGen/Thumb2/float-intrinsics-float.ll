@@ -1,7 +1,8 @@
 ; RUN: llc < %s -mtriple=thumbv7-none-eabi   -mcpu=cortex-m3                    | FileCheck %s -check-prefix=CHECK -check-prefix=SOFT -check-prefix=NONE
-; RUN: llc < %s -mtriple=thumbv7-none-eabihf -mcpu=cortex-m4                    | FileCheck %s -check-prefix=CHECK -check-prefix=HARD -check-prefix=SP -check-prefix=VMLA
+; RUN: llc < %s -mtriple=thumbv7-none-eabihf -mcpu=cortex-m4                    | FileCheck %s -check-prefix=CHECK -check-prefix=HARD -check-prefix=SP -check-prefix=NO-VMLA
+; RUN: llc < %s -mtriple=thumbv7-none-eabihf -mcpu=cortex-m33                   | FileCheck %s -check-prefix=CHECK -check-prefix=HARD -check-prefix=SP -check-prefix=NO-VMLA
 ; RUN: llc < %s -mtriple=thumbv7-none-eabihf -mcpu=cortex-m7                    | FileCheck %s -check-prefix=CHECK -check-prefix=HARD -check-prefix=DP -check-prefix=VFP  -check-prefix=FP-ARMv8  -check-prefix=VMLA
-; RUN: llc < %s -mtriple=thumbv7-none-eabihf -mcpu=cortex-m7 -mattr=+fp-only-sp | FileCheck %s -check-prefix=CHECK -check-prefix=HARD -check-prefix=SP -check-prefix=FP-ARMv8 -check-prefix=VMLA
+; RUN: llc < %s -mtriple=thumbv7-none-eabihf -mcpu=cortex-m7 -mattr=-fp64 | FileCheck %s -check-prefix=CHECK -check-prefix=HARD -check-prefix=SP -check-prefix=FP-ARMv8 -check-prefix=VMLA
 ; RUN: llc < %s -mtriple=thumbv7-none-eabihf -mcpu=cortex-a7                    | FileCheck %s -check-prefix=CHECK -check-prefix=HARD -check-prefix=DP -check-prefix=NEON -check-prefix=VFP4 -check-prefix=NO-VMLA
 ; RUN: llc < %s -mtriple=thumbv7-none-eabihf -mcpu=cortex-a57                   | FileCheck %s -check-prefix=CHECK -check-prefix=HARD -check-prefix=DP -check-prefix=NEON -check-prefix=FP-ARMv8 -check-prefix=VMLA
 
@@ -188,8 +189,6 @@ define float @round_f(float %a) {
   ret float %1
 }
 
-; FIXME: why does cortex-m4 use vmla, while cortex-a7 uses vmul+vadd?
-; (these should be equivalent, even the rounding is the same)
 declare float     @llvm.fmuladd.f32(float %a, float %b, float %c)
 define float @fmuladd_f(float %a, float %b, float %c) {
 ; CHECK-LABEL: fmuladd_f:
@@ -205,7 +204,7 @@ define float @fmuladd_f(float %a, float %b, float %c) {
 declare i16 @llvm.convert.to.fp16.f32(float %a)
 define i16 @f_to_h(float %a) {
 ; CHECK-LABEL: f_to_h:
-; SOFT: bl __gnu_f2h_ieee
+; SOFT: bl __aeabi_f2h
 ; HARD: vcvt{{[bt]}}.f16.f32
   %1 = call i16 @llvm.convert.to.fp16.f32(float %a)
   ret i16 %1
@@ -214,7 +213,7 @@ define i16 @f_to_h(float %a) {
 declare float @llvm.convert.from.fp16.f32(i16 %a)
 define float @h_to_f(i16 %a) {
 ; CHECK-LABEL: h_to_f:
-; SOFT: bl __gnu_h2f_ieee
+; SOFT: bl __aeabi_h2f
 ; HARD: vcvt{{[bt]}}.f32.f16
   %1 = call float @llvm.convert.from.fp16.f32(i16 %a)
   ret float %1

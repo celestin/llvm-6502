@@ -1,4 +1,8 @@
-; RUN: llc < %s -mtriple=aarch64-linux-gnuabi -O2 | FileCheck %s
+; RUN: llc < %s -mtriple=aarch64-linux-gnuabi -O2 -tail-dup-placement=0 | FileCheck %s
+; -tail-dup-placement causes tail duplication during layout. This breaks the
+; assumptions of the test case as written (specifically, it creates an
+; additional cmp instruction, creating a false positive), so we pass
+; -tail-dup-placement=0 to restore the original behavior
 
 ; marked as external to prevent possible optimizations
 @a = external global i32
@@ -41,5 +45,29 @@ if.end:
 return:
   %retval.0 = phi i32 [ 0, %if.end ], [ 1, %land.lhs.true3 ], [ 1, %land.lhs.true ]
   store i32 %a, i32 *%arg
+  ret void
+}
+
+define void @combine_vector_zeros(<8 x i8>* %p, <16 x i8>* %q) {
+; CHECK-LABEL: combine_vector_zeros:
+; CHECK: movi v[[REG:[0-9]+]].2d, #0
+; CHECK-NOT: movi
+; CHECK: str d[[REG]], [x0]
+; CHECK: str q[[REG]], [x1]
+entry:
+  store <8 x i8> zeroinitializer, <8 x i8>* %p
+  store <16 x i8> zeroinitializer, <16 x i8>* %q
+  ret void
+}
+
+define void @combine_vector_ones(<2 x i32>* %p, <4 x i32>* %q) {
+; CHECK-LABEL: combine_vector_ones:
+; CHECK: movi v[[REG:[0-9]+]].2d, #0xffffffffffffffff
+; CHECK-NOT: movi
+; CHECK: str d[[REG]], [x0]
+; CHECK: str q[[REG]], [x1]
+entry:
+  store <2 x i32> <i32 -1, i32 -1>, <2 x i32>* %p
+  store <4 x i32> <i32 -1, i32 -1, i32 -1, i32 -1>, <4 x i32>* %q
   ret void
 }

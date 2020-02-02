@@ -1,20 +1,20 @@
-; RUN: llc -verify-machineinstrs < %s -mtriple=aarch64-none-linux-gnu -aarch64-load-store-opt=0 | FileCheck %s
+; RUN: llc -verify-machineinstrs < %s -mtriple=aarch64-none-linux-gnu -aarch64-enable-ldst-opt=0 | FileCheck %s
 
 declare void @callee_stack0()
-declare void @callee_stack8([8 x i32], i64)
-declare void @callee_stack16([8 x i32], i64, i64)
+declare void @callee_stack8([8 x i64], i64)
+declare void @callee_stack16([8 x i64], i64, i64)
 
 define void @caller_to0_from0() nounwind {
 ; CHECK-LABEL: caller_to0_from0:
-; CHECK-NEXT: // BB
+; CHECK-NEXT: // %bb.
   tail call void @callee_stack0()
   ret void
 ; CHECK-NEXT: b callee_stack0
 }
 
-define void @caller_to0_from8([8 x i32], i64) nounwind{
+define void @caller_to0_from8([8 x i64], i64) nounwind{
 ; CHECK-LABEL: caller_to0_from8:
-; CHECK-NEXT: // BB
+; CHECK-NEXT: // %bb.
 
   tail call void @callee_stack0()
   ret void
@@ -26,51 +26,51 @@ define void @caller_to8_from0() {
 
 ; Caller isn't going to clean up any extra stack we allocate, so it
 ; can't be a tail call.
-  tail call void @callee_stack8([8 x i32] undef, i64 42)
+  tail call void @callee_stack8([8 x i64] undef, i64 42)
   ret void
 ; CHECK: bl callee_stack8
 }
 
-define void @caller_to8_from8([8 x i32], i64 %a) {
+define void @caller_to8_from8([8 x i64], i64 %a) {
 ; CHECK-LABEL: caller_to8_from8:
 ; CHECK-NOT: sub sp, sp,
 
 ; This should reuse our stack area for the 42
-  tail call void @callee_stack8([8 x i32] undef, i64 42)
+  tail call void @callee_stack8([8 x i64] undef, i64 42)
   ret void
 ; CHECK: str {{x[0-9]+}}, [sp]
 ; CHECK-NEXT: b callee_stack8
 }
 
-define void @caller_to16_from8([8 x i32], i64 %a) {
+define void @caller_to16_from8([8 x i64], i64 %a) {
 ; CHECK-LABEL: caller_to16_from8:
 
 ; Shouldn't be a tail call: we can't use SP+8 because our caller might
 ; have something there. This may sound obvious but implementation does
 ; some funky aligning.
-  tail call void @callee_stack16([8 x i32] undef, i64 undef, i64 undef)
+  tail call void @callee_stack16([8 x i64] undef, i64 undef, i64 undef)
 ; CHECK: bl callee_stack16
   ret void
 }
 
-define void @caller_to8_from24([8 x i32], i64 %a, i64 %b, i64 %c) {
+define void @caller_to8_from24([8 x i64], i64 %a, i64 %b, i64 %c) {
 ; CHECK-LABEL: caller_to8_from24:
 ; CHECK-NOT: sub sp, sp
 
 ; Reuse our area, putting "42" at incoming sp
-  tail call void @callee_stack8([8 x i32] undef, i64 42)
+  tail call void @callee_stack8([8 x i64] undef, i64 42)
   ret void
 ; CHECK: str {{x[0-9]+}}, [sp]
 ; CHECK-NEXT: b callee_stack8
 }
 
-define void @caller_to16_from16([8 x i32], i64 %a, i64 %b) {
+define void @caller_to16_from16([8 x i64], i64 %a, i64 %b) {
 ; CHECK-LABEL: caller_to16_from16:
 ; CHECK-NOT: sub sp, sp,
 
 ; Here we want to make sure that both loads happen before the stores:
 ; otherwise either %a or %b will be wrongly clobbered.
-  tail call void @callee_stack16([8 x i32] undef, i64 %b, i64 %a)
+  tail call void @callee_stack16([8 x i64] undef, i64 %b, i64 %a)
   ret void
 
 ; CHECK: ldr [[VAL0:x[0-9]+]],
@@ -92,6 +92,6 @@ define void @indirect_tail() {
   tail call void %fptr(i32 42)
   ret void
 ; CHECK: ldr [[FPTR:x[1-9]+]], [{{x[0-9]+}}, {{#?}}:lo12:func]
-; CHECK: movz w0, #{{42|0x2a}}
+; CHECK: mov w0, #{{42|0x2a}}
 ; CHECK: br [[FPTR]]
 }

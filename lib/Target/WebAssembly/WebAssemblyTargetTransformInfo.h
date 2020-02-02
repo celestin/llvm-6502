@@ -1,14 +1,13 @@
 //==- WebAssemblyTargetTransformInfo.h - WebAssembly-specific TTI -*- C++ -*-=//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// \brief This file a TargetTransformInfo::Concept conforming object specific
+/// This file a TargetTransformInfo::Concept conforming object specific
 /// to the WebAssembly target machine.
 ///
 /// It uses the target's detailed information to provide more precise answers to
@@ -38,30 +37,32 @@ class WebAssemblyTTIImpl final : public BasicTTIImplBase<WebAssemblyTTIImpl> {
   const WebAssemblyTargetLowering *getTLI() const { return TLI; }
 
 public:
-  WebAssemblyTTIImpl(const WebAssemblyTargetMachine *TM, Function &F)
+  WebAssemblyTTIImpl(const WebAssemblyTargetMachine *TM, const Function &F)
       : BaseT(TM, F.getParent()->getDataLayout()), ST(TM->getSubtargetImpl(F)),
         TLI(ST->getTargetLowering()) {}
-
-  // Provide value semantics. MSVC requires that we spell all of these out.
-  WebAssemblyTTIImpl(const WebAssemblyTTIImpl &Arg)
-      : BaseT(static_cast<const BaseT &>(Arg)), ST(Arg.ST), TLI(Arg.TLI) {}
-  WebAssemblyTTIImpl(WebAssemblyTTIImpl &&Arg)
-      : BaseT(std::move(static_cast<BaseT &>(Arg))), ST(std::move(Arg.ST)),
-        TLI(std::move(Arg.TLI)) {}
 
   /// \name Scalar TTI Implementations
   /// @{
 
   // TODO: Implement more Scalar TTI for WebAssembly
 
-  TTI::PopcntSupportKind getPopcntSupport(unsigned TyWidth);
+  TTI::PopcntSupportKind getPopcntSupport(unsigned TyWidth) const;
 
   /// @}
 
   /// \name Vector TTI Implementations
   /// @{
 
-  // TODO: Implement Vector TTI for WebAssembly
+  unsigned getNumberOfRegisters(unsigned ClassID) const;
+  unsigned getRegisterBitWidth(bool Vector) const;
+  unsigned getArithmeticInstrCost(
+      unsigned Opcode, Type *Ty,
+      TTI::OperandValueKind Opd1Info = TTI::OK_AnyValue,
+      TTI::OperandValueKind Opd2Info = TTI::OK_AnyValue,
+      TTI::OperandValueProperties Opd1PropInfo = TTI::OP_None,
+      TTI::OperandValueProperties Opd2PropInfo = TTI::OP_None,
+      ArrayRef<const Value *> Args = ArrayRef<const Value *>());
+  unsigned getVectorInstrCost(unsigned Opcode, Type *Val, unsigned Index);
 
   /// @}
 };

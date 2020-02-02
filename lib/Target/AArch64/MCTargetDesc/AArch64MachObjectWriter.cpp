@@ -1,44 +1,52 @@
 //===-- AArch64MachObjectWriter.cpp - ARM Mach Object Writer --------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
 #include "MCTargetDesc/AArch64FixupKinds.h"
 #include "MCTargetDesc/AArch64MCTargetDesc.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/BinaryFormat/MachO.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCAsmLayout.h"
 #include "llvm/MC/MCAssembler.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCFixup.h"
+#include "llvm/MC/MCFragment.h"
 #include "llvm/MC/MCMachObjectWriter.h"
+#include "llvm/MC/MCSection.h"
 #include "llvm/MC/MCSectionMachO.h"
+#include "llvm/MC/MCSymbol.h"
 #include "llvm/MC/MCValue.h"
-#include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/MachO.h"
+#include "llvm/Support/Casting.h"
+#include "llvm/Support/MathExtras.h"
+#include <cassert>
+#include <cstdint>
+
 using namespace llvm;
 
 namespace {
+
 class AArch64MachObjectWriter : public MCMachObjectTargetWriter {
   bool getAArch64FixupKindMachOInfo(const MCFixup &Fixup, unsigned &RelocType,
                                   const MCSymbolRefExpr *Sym,
                                   unsigned &Log2Size, const MCAssembler &Asm);
 
 public:
-  AArch64MachObjectWriter(uint32_t CPUType, uint32_t CPUSubtype)
-      : MCMachObjectTargetWriter(true /* is64Bit */, CPUType, CPUSubtype) {}
+  AArch64MachObjectWriter(uint32_t CPUType, uint32_t CPUSubtype, bool IsILP32)
+      : MCMachObjectTargetWriter(!IsILP32 /* is64Bit */, CPUType, CPUSubtype) {}
 
   void recordRelocation(MachObjectWriter *Writer, MCAssembler &Asm,
                         const MCAsmLayout &Layout, const MCFragment *Fragment,
                         const MCFixup &Fixup, MCValue Target,
                         uint64_t &FixedValue) override;
 };
-}
+
+} // end anonymous namespace
 
 bool AArch64MachObjectWriter::getAArch64FixupKindMachOInfo(
     const MCFixup &Fixup, unsigned &RelocType, const MCSymbolRefExpr *Sym,
@@ -46,23 +54,23 @@ bool AArch64MachObjectWriter::getAArch64FixupKindMachOInfo(
   RelocType = unsigned(MachO::ARM64_RELOC_UNSIGNED);
   Log2Size = ~0U;
 
-  switch ((unsigned)Fixup.getKind()) {
+  switch (Fixup.getTargetKind()) {
   default:
     return false;
 
   case FK_Data_1:
-    Log2Size = llvm::Log2_32(1);
+    Log2Size = Log2_32(1);
     return true;
   case FK_Data_2:
-    Log2Size = llvm::Log2_32(2);
+    Log2Size = Log2_32(2);
     return true;
   case FK_Data_4:
-    Log2Size = llvm::Log2_32(4);
+    Log2Size = Log2_32(4);
     if (Sym->getKind() == MCSymbolRefExpr::VK_GOT)
       RelocType = unsigned(MachO::ARM64_RELOC_POINTER_TO_GOT);
     return true;
   case FK_Data_8:
-    Log2Size = llvm::Log2_32(8);
+    Log2Size = Log2_32(8);
     if (Sym->getKind() == MCSymbolRefExpr::VK_GOT)
       RelocType = unsigned(MachO::ARM64_RELOC_POINTER_TO_GOT);
     return true;
@@ -72,10 +80,10 @@ bool AArch64MachObjectWriter::getAArch64FixupKindMachOInfo(
   case AArch64::fixup_aarch64_ldst_imm12_scale4:
   case AArch64::fixup_aarch64_ldst_imm12_scale8:
   case AArch64::fixup_aarch64_ldst_imm12_scale16:
-    Log2Size = llvm::Log2_32(4);
+    Log2Size = Log2_32(4);
     switch (Sym->getKind()) {
     default:
-      llvm_unreachable("Unexpected symbol reference variant kind!");
+      return false;
     case MCSymbolRefExpr::VK_PAGEOFF:
       RelocType = unsigned(MachO::ARM64_RELOC_PAGEOFF12);
       return true;
@@ -87,12 +95,13 @@ bool AArch64MachObjectWriter::getAArch64FixupKindMachOInfo(
       return true;
     }
   case AArch64::fixup_aarch64_pcrel_adrp_imm21:
-    Log2Size = llvm::Log2_32(4);
+    Log2Size = Log2_32(4);
     // This encompasses the relocation for the whole 21-bit value.
     switch (Sym->getKind()) {
     default:
-      Asm.getContext().reportFatalError(Fixup.getLoc(),
-                                  "ADR/ADRP relocations must be GOT relative");
+      Asm.getContext().reportError(Fixup.getLoc(),
+                                   "ADR/ADRP relocations must be GOT relative");
+      return false;
     case MCSymbolRefExpr::VK_PAGE:
       RelocType = unsigned(MachO::ARM64_RELOC_PAGE21);
       return true;
@@ -106,7 +115,7 @@ bool AArch64MachObjectWriter::getAArch64FixupKindMachOInfo(
     return true;
   case AArch64::fixup_aarch64_pcrel_branch26:
   case AArch64::fixup_aarch64_pcrel_call26:
-    Log2Size = llvm::Log2_32(4);
+    Log2Size = Log2_32(4);
     RelocType = unsigned(MachO::ARM64_RELOC_BRANCH26);
     return true;
   }
@@ -170,25 +179,25 @@ void AArch64MachObjectWriter::recordRelocation(
   // assembler local symbols. If we got here, that's not what we have,
   // so complain loudly.
   if (Kind == AArch64::fixup_aarch64_pcrel_branch19) {
-    Asm.getContext().reportFatalError(Fixup.getLoc(),
-                                "conditional branch requires assembler-local"
-                                " label. '" +
-                                    Target.getSymA()->getSymbol().getName() +
-                                    "' is external.");
+    Asm.getContext().reportError(Fixup.getLoc(),
+                                 "conditional branch requires assembler-local"
+                                 " label. '" +
+                                     Target.getSymA()->getSymbol().getName() +
+                                     "' is external.");
     return;
   }
 
   // 14-bit branch relocations should only target internal labels, and so
   // should never get here.
   if (Kind == AArch64::fixup_aarch64_pcrel_branch14) {
-    Asm.getContext().reportFatalError(Fixup.getLoc(),
-                                "Invalid relocation on conditional branch!");
+    Asm.getContext().reportError(Fixup.getLoc(),
+                                 "Invalid relocation on conditional branch!");
     return;
   }
 
   if (!getAArch64FixupKindMachOInfo(Fixup, Type, Target.getSymA(), Log2Size,
-                                  Asm)) {
-    Asm.getContext().reportFatalError(Fixup.getLoc(), "unknown AArch64 fixup kind!");
+                                    Asm)) {
+    Asm.getContext().reportError(Fixup.getLoc(), "unknown AArch64 fixup kind!");
     return;
   }
 
@@ -200,8 +209,9 @@ void AArch64MachObjectWriter::recordRelocation(
     Type = MachO::ARM64_RELOC_UNSIGNED;
 
     if (IsPCRel) {
-      Asm.getContext().reportFatalError(Fixup.getLoc(),
-                                  "PC relative absolute relocation!");
+      Asm.getContext().reportError(Fixup.getLoc(),
+                                   "PC relative absolute relocation!");
+      return;
 
       // FIXME: x86_64 sets the type to a branch reloc here. Should we do
       // something similar?
@@ -229,16 +239,20 @@ void AArch64MachObjectWriter::recordRelocation(
       Writer->addRelocation(A_Base, Fragment->getParent(), MRE);
       return;
     } else if (Target.getSymA()->getKind() != MCSymbolRefExpr::VK_None ||
-               Target.getSymB()->getKind() != MCSymbolRefExpr::VK_None)
+               Target.getSymB()->getKind() != MCSymbolRefExpr::VK_None) {
       // Otherwise, neither symbol can be modified.
-      Asm.getContext().reportFatalError(Fixup.getLoc(),
-                                  "unsupported relocation of modified symbol");
+      Asm.getContext().reportError(Fixup.getLoc(),
+                                   "unsupported relocation of modified symbol");
+      return;
+    }
 
     // We don't support PCrel relocations of differences.
-    if (IsPCRel)
-      Asm.getContext().reportFatalError(Fixup.getLoc(),
-                                  "unsupported pc-relative relocation of "
-                                  "difference");
+    if (IsPCRel) {
+      Asm.getContext().reportError(Fixup.getLoc(),
+                                   "unsupported pc-relative relocation of "
+                                   "difference");
+      return;
+    }
 
     // AArch64 always uses external relocations. If there is no symbol to use as
     // a base address (a local symbol with no preceding non-local symbol),
@@ -246,20 +260,26 @@ void AArch64MachObjectWriter::recordRelocation(
     //
     // FIXME: We should probably just synthesize an external symbol and use
     // that.
-    if (!A_Base)
-      Asm.getContext().reportFatalError(
+    if (!A_Base) {
+      Asm.getContext().reportError(
           Fixup.getLoc(),
           "unsupported relocation of local symbol '" + A->getName() +
               "'. Must have non-local symbol earlier in section.");
-    if (!B_Base)
-      Asm.getContext().reportFatalError(
+      return;
+    }
+    if (!B_Base) {
+      Asm.getContext().reportError(
           Fixup.getLoc(),
           "unsupported relocation of local symbol '" + B->getName() +
               "'. Must have non-local symbol earlier in section.");
+      return;
+    }
 
-    if (A_Base == B_Base && A_Base)
-      Asm.getContext().reportFatalError(Fixup.getLoc(),
-                                  "unsupported relocation with identical base");
+    if (A_Base == B_Base && A_Base) {
+      Asm.getContext().reportError(
+          Fixup.getLoc(), "unsupported relocation with identical base");
+      return;
+    }
 
     Value += (!A->getFragment() ? 0 : Writer->getSymbolAddress(*A, Layout)) -
              (!A_Base || !A_Base->getFragment() ? 0 : Writer->getSymbolAddress(
@@ -285,37 +305,24 @@ void AArch64MachObjectWriter::recordRelocation(
     bool CanUseLocalRelocation =
         canUseLocalRelocation(Section, *Symbol, Log2Size);
     if (Symbol->isTemporary() && (Value || !CanUseLocalRelocation)) {
+      // Make sure that the symbol is actually in a section here. If it isn't,
+      // emit an error and exit.
+      if (!Symbol->isInSection()) {
+        Asm.getContext().reportError(
+            Fixup.getLoc(),
+            "unsupported relocation of local symbol '" + Symbol->getName() +
+                "'. Must have non-local symbol earlier in section.");
+        return;
+      }
       const MCSection &Sec = Symbol->getSection();
       if (!Asm.getContext().getAsmInfo()->isSectionAtomizableBySymbols(Sec))
         Symbol->setUsedInReloc();
     }
 
     const MCSymbol *Base = Asm.getAtom(*Symbol);
-
-    // If the symbol is a variable and we weren't able to get a Base for it
-    // (i.e., it's not in the symbol table associated with a section) resolve
-    // the relocation based its expansion instead.
-    if (Symbol->isVariable() && !Base) {
-      // If the evaluation is an absolute value, just use that directly
-      // to keep things easy.
-      int64_t Res;
-      if (Symbol->getVariableValue()->evaluateAsAbsolute(
-              Res, Layout, Writer->getSectionAddressMap())) {
-        FixedValue = Res;
-        return;
-      }
-
-      // FIXME: Will the Target we already have ever have any data in it
-      // we need to preserve and merge with the new Target? How about
-      // the FixedValue?
-      if (!Symbol->getVariableValue()->evaluateAsRelocatable(Target, &Layout,
-                                                             &Fixup))
-        Asm.getContext().reportFatalError(Fixup.getLoc(),
-                                    "unable to resolve variable '" +
-                                        Symbol->getName() + "'");
-      return recordRelocation(Writer, Asm, Layout, Fragment, Fixup, Target,
-                              FixedValue);
-    }
+    // If the symbol is a variable it can either be in a section and
+    // we have a base or it is absolute and should have been expanded.
+    assert(!Symbol->isVariable() || Base);
 
     // Relocations inside debug sections always use local relocations when
     // possible. This seems to be done because the debugger doesn't fully
@@ -337,11 +344,13 @@ void AArch64MachObjectWriter::recordRelocation(
         Value +=
             Layout.getSymbolOffset(*Symbol) - Layout.getSymbolOffset(*Base);
     } else if (Symbol->isInSection()) {
-      if (!CanUseLocalRelocation)
-        Asm.getContext().reportFatalError(
+      if (!CanUseLocalRelocation) {
+        Asm.getContext().reportError(
             Fixup.getLoc(),
             "unsupported relocation of local symbol '" + Symbol->getName() +
                 "'. Must have non-local symbol earlier in section.");
+        return;
+      }
       // Adjust the relocation to be section-relative.
       // The index is the section ordinal (1-based).
       const MCSection &Sec = Symbol->getSection();
@@ -352,18 +361,8 @@ void AArch64MachObjectWriter::recordRelocation(
         Value -= Writer->getFragmentAddress(Fragment, Layout) +
                  Fixup.getOffset() + (1ULL << Log2Size);
     } else {
-      // Resolve constant variables.
-      if (Symbol->isVariable()) {
-        int64_t Res;
-        if (Symbol->getVariableValue()->evaluateAsAbsolute(
-                Res, Layout, Writer->getSectionAddressMap())) {
-          FixedValue = Res;
-          return;
-        }
-      }
-      Asm.getContext().reportFatalError(Fixup.getLoc(),
-                                  "unsupported relocation of variable '" +
-                                      Symbol->getName() + "'");
+      llvm_unreachable(
+          "This constant variable should have been expanded during evaluation");
     }
   }
 
@@ -404,10 +403,9 @@ void AArch64MachObjectWriter::recordRelocation(
   Writer->addRelocation(RelSymbol, Fragment->getParent(), MRE);
 }
 
-MCObjectWriter *llvm::createAArch64MachObjectWriter(raw_pwrite_stream &OS,
-                                                    uint32_t CPUType,
-                                                    uint32_t CPUSubtype) {
-  return createMachObjectWriter(
-      new AArch64MachObjectWriter(CPUType, CPUSubtype), OS,
-      /*IsLittleEndian=*/true);
+std::unique_ptr<MCObjectTargetWriter>
+llvm::createAArch64MachObjectWriter(uint32_t CPUType, uint32_t CPUSubtype,
+                                    bool IsILP32) {
+  return std::make_unique<AArch64MachObjectWriter>(CPUType, CPUSubtype,
+                                                    IsILP32);
 }

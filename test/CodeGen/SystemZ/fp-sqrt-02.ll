@@ -21,7 +21,7 @@ define double @f2(double *%ptr) {
 ; CHECK-LABEL: f2:
 ; CHECK: sqdb %f0, 0(%r2)
 ; CHECK: br %r14
-  %val = load double , double *%ptr
+  %val = load double, double *%ptr
   %res = call double @llvm.sqrt.f64(double %val)
   ret double %res
 }
@@ -32,7 +32,7 @@ define double @f3(double *%base) {
 ; CHECK: sqdb %f0, 4088(%r2)
 ; CHECK: br %r14
   %ptr = getelementptr double, double *%base, i64 511
-  %val = load double , double *%ptr
+  %val = load double, double *%ptr
   %res = call double @llvm.sqrt.f64(double %val)
   ret double %res
 }
@@ -45,7 +45,7 @@ define double @f4(double *%base) {
 ; CHECK: sqdb %f0, 0(%r2)
 ; CHECK: br %r14
   %ptr = getelementptr double, double *%base, i64 512
-  %val = load double , double *%ptr
+  %val = load double, double *%ptr
   %res = call double @llvm.sqrt.f64(double %val)
   ret double %res
 }
@@ -57,7 +57,7 @@ define double @f5(double *%base) {
 ; CHECK: sqdb %f0, 0(%r2)
 ; CHECK: br %r14
   %ptr = getelementptr double, double *%base, i64 -1
-  %val = load double , double *%ptr
+  %val = load double, double *%ptr
   %res = call double @llvm.sqrt.f64(double %val)
   ret double %res
 }
@@ -70,7 +70,7 @@ define double @f6(double *%base, i64 %index) {
 ; CHECK: br %r14
   %ptr1 = getelementptr double, double *%base, i64 %index
   %ptr2 = getelementptr double, double *%ptr1, i64 100
-  %val = load double , double *%ptr2
+  %val = load double, double *%ptr2
   %res = call double @llvm.sqrt.f64(double %val)
   ret double %res
 }
@@ -81,23 +81,23 @@ define void @f7(double *%ptr) {
 ; CHECK-LABEL: f7:
 ; CHECK-SCALAR: sqdb {{%f[0-9]+}}, 160(%r15)
 ; CHECK: br %r14
-  %val0 = load volatile double , double *%ptr
-  %val1 = load volatile double , double *%ptr
-  %val2 = load volatile double , double *%ptr
-  %val3 = load volatile double , double *%ptr
-  %val4 = load volatile double , double *%ptr
-  %val5 = load volatile double , double *%ptr
-  %val6 = load volatile double , double *%ptr
-  %val7 = load volatile double , double *%ptr
-  %val8 = load volatile double , double *%ptr
-  %val9 = load volatile double , double *%ptr
-  %val10 = load volatile double , double *%ptr
-  %val11 = load volatile double , double *%ptr
-  %val12 = load volatile double , double *%ptr
-  %val13 = load volatile double , double *%ptr
-  %val14 = load volatile double , double *%ptr
-  %val15 = load volatile double , double *%ptr
-  %val16 = load volatile double , double *%ptr
+  %val0 = load volatile double, double *%ptr
+  %val1 = load volatile double, double *%ptr
+  %val2 = load volatile double, double *%ptr
+  %val3 = load volatile double, double *%ptr
+  %val4 = load volatile double, double *%ptr
+  %val5 = load volatile double, double *%ptr
+  %val6 = load volatile double, double *%ptr
+  %val7 = load volatile double, double *%ptr
+  %val8 = load volatile double, double *%ptr
+  %val9 = load volatile double, double *%ptr
+  %val10 = load volatile double, double *%ptr
+  %val11 = load volatile double, double *%ptr
+  %val12 = load volatile double, double *%ptr
+  %val13 = load volatile double, double *%ptr
+  %val14 = load volatile double, double *%ptr
+  %val15 = load volatile double, double *%ptr
+  %val16 = load volatile double, double *%ptr
 
   %sqrt0 = call double @llvm.sqrt.f64(double %val0)
   %sqrt1 = call double @llvm.sqrt.f64(double %val1)
@@ -161,9 +161,7 @@ define double @f8(double %dummy, double %val) {
 ; CHECK-LABEL: f8:
 ; CHECK: sqdbr %f0, %f2
 ; CHECK: cdbr %f0, %f0
-; CHECK: jo [[LABEL:\.L.*]]
-; CHECK: br %r14
-; CHECK: [[LABEL]]:
+; CHECK: bnor %r14
 ; CHECK: ldr %f0, %f2
 ; CHECK: jg sqrt@PLT
   %res = tail call double @sqrt(double %val)

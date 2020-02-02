@@ -1,84 +1,103 @@
 //===-- AMDGPUAsmBackend.cpp - AMDGPU Assembler Backend -------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 /// \file
 //===----------------------------------------------------------------------===//
 
-#include "MCTargetDesc/AMDGPUMCTargetDesc.h"
 #include "MCTargetDesc/AMDGPUFixupKinds.h"
+#include "MCTargetDesc/AMDGPUMCTargetDesc.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/BinaryFormat/ELF.h"
 #include "llvm/MC/MCAsmBackend.h"
 #include "llvm/MC/MCAssembler.h"
+#include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCFixupKindInfo.h"
 #include "llvm/MC/MCObjectWriter.h"
 #include "llvm/MC/MCValue.h"
 #include "llvm/Support/TargetRegistry.h"
+#include "Utils/AMDGPUBaseInfo.h"
 
 using namespace llvm;
+using namespace llvm::AMDGPU;
 
 namespace {
 
-class AMDGPUMCObjectWriter : public MCObjectWriter {
-public:
-  AMDGPUMCObjectWriter(raw_pwrite_stream &OS) : MCObjectWriter(OS, true) {}
-  void executePostLayoutBinding(MCAssembler &Asm,
-                                const MCAsmLayout &Layout) override {
-    //XXX: Implement if necessary.
-  }
-  void recordRelocation(MCAssembler &Asm, const MCAsmLayout &Layout,
-                        const MCFragment *Fragment, const MCFixup &Fixup,
-                        MCValue Target, bool &IsPCRel,
-                        uint64_t &FixedValue) override {
-    assert(!"Not implemented");
-  }
-
-  void writeObject(MCAssembler &Asm, const MCAsmLayout &Layout) override;
-
-};
-
 class AMDGPUAsmBackend : public MCAsmBackend {
 public:
-  AMDGPUAsmBackend(const Target &T)
-    : MCAsmBackend() {}
+  AMDGPUAsmBackend(const Target &T) : MCAsmBackend(support::little) {}
 
   unsigned getNumFixupKinds() const override { return AMDGPU::NumTargetFixupKinds; };
-  void applyFixup(const MCFixup &Fixup, char *Data, unsigned DataSize,
-                  uint64_t Value, bool IsPCRel) const override;
+
+  void applyFixup(const MCAssembler &Asm, const MCFixup &Fixup,
+                  const MCValue &Target, MutableArrayRef<char> Data,
+                  uint64_t Value, bool IsResolved,
+                  const MCSubtargetInfo *STI) const override;
   bool fixupNeedsRelaxation(const MCFixup &Fixup, uint64_t Value,
                             const MCRelaxableFragment *DF,
-                            const MCAsmLayout &Layout) const override {
-    return false;
-  }
-  void relaxInstruction(const MCInst &Inst, MCInst &Res) const override {
-    assert(!"Not implemented");
-  }
-  bool mayNeedRelaxation(const MCInst &Inst) const override { return false; }
-  bool writeNopData(uint64_t Count, MCObjectWriter *OW) const override;
+                            const MCAsmLayout &Layout) const override;
+
+  void relaxInstruction(const MCInst &Inst, const MCSubtargetInfo &STI,
+                        MCInst &Res) const override;
+
+  bool mayNeedRelaxation(const MCInst &Inst,
+                         const MCSubtargetInfo &STI) const override;
+
+  unsigned getMinimumNopSize() const override;
+  bool writeNopData(raw_ostream &OS, uint64_t Count) const override;
 
   const MCFixupKindInfo &getFixupKindInfo(MCFixupKind Kind) const override;
 };
 
 } //End anonymous namespace
 
-void AMDGPUMCObjectWriter::writeObject(MCAssembler &Asm,
-                                       const MCAsmLayout &Layout) {
-  for (MCAssembler::iterator I = Asm.begin(), E = Asm.end(); I != E; ++I) {
-    Asm.writeSectionData(&*I, Layout);
-  }
+void AMDGPUAsmBackend::relaxInstruction(const MCInst &Inst,
+                                        const MCSubtargetInfo &STI,
+                                        MCInst &Res) const {
+  unsigned RelaxedOpcode = AMDGPU::getSOPPWithRelaxation(Inst.getOpcode());
+  Res.setOpcode(RelaxedOpcode);
+  Res.addOperand(Inst.getOperand(0));
+  return;
+}
+
+bool AMDGPUAsmBackend::fixupNeedsRelaxation(const MCFixup &Fixup,
+                                            uint64_t Value,
+                                            const MCRelaxableFragment *DF,
+                                            const MCAsmLayout &Layout) const {
+  // if the branch target has an offset of x3f this needs to be relaxed to
+  // add a s_nop 0 immediately after branch to effectively increment offset
+  // for hardware workaround in gfx1010
+  return (((int64_t(Value)/4)-1) == 0x3f);
+}
+
+bool AMDGPUAsmBackend::mayNeedRelaxation(const MCInst &Inst,
+                       const MCSubtargetInfo &STI) const {
+  if (!STI.getFeatureBits()[AMDGPU::FeatureOffset3fBug])
+    return false;
+
+  if (AMDGPU::getSOPPWithRelaxation(Inst.getOpcode()) >= 0)
+    return true;
+
+  return false;
 }
 
 static unsigned getFixupKindNumBytes(unsigned Kind) {
   switch (Kind) {
+  case AMDGPU::fixup_si_sopp_br:
+    return 2;
+  case FK_SecRel_1:
   case FK_Data_1:
     return 1;
+  case FK_SecRel_2:
   case FK_Data_2:
     return 2;
+  case FK_SecRel_4:
   case FK_Data_4:
+  case FK_PCRel_4:
     return 4;
+  case FK_SecRel_8:
   case FK_Data_8:
     return 8;
   default:
@@ -86,49 +105,53 @@ static unsigned getFixupKindNumBytes(unsigned Kind) {
   }
 }
 
-void AMDGPUAsmBackend::applyFixup(const MCFixup &Fixup, char *Data,
-                                  unsigned DataSize, uint64_t Value,
-                                  bool IsPCRel) const {
+static uint64_t adjustFixupValue(const MCFixup &Fixup, uint64_t Value,
+                                 MCContext *Ctx) {
+  int64_t SignedValue = static_cast<int64_t>(Value);
 
-  switch ((unsigned)Fixup.getKind()) {
-    case AMDGPU::fixup_si_sopp_br: {
-      uint16_t *Dst = (uint16_t*)(Data + Fixup.getOffset());
-      *Dst = (Value - 4) / 4;
-      break;
-    }
+  switch (Fixup.getTargetKind()) {
+  case AMDGPU::fixup_si_sopp_br: {
+    int64_t BrImm = (SignedValue - 4) / 4;
 
-    case AMDGPU::fixup_si_rodata: {
-      uint32_t *Dst = (uint32_t*)(Data + Fixup.getOffset());
-      *Dst = Value;
-      break;
-    }
+    if (Ctx && !isInt<16>(BrImm))
+      Ctx->reportError(Fixup.getLoc(), "branch size exceeds simm16");
 
-    case AMDGPU::fixup_si_end_of_text: {
-      uint32_t *Dst = (uint32_t*)(Data + Fixup.getOffset());
-      // The value points to the last instruction in the text section, so we
-      // need to add 4 bytes to get to the start of the constants.
-      *Dst = Value + 4;
-      break;
-    }
-    default: {
-      // FIXME: Copied from AArch64
-      unsigned NumBytes = getFixupKindNumBytes(Fixup.getKind());
-      if (!Value)
-        return; // Doesn't change encoding.
-      MCFixupKindInfo Info = getFixupKindInfo(Fixup.getKind());
-
-      // Shift the value into position.
-      Value <<= Info.TargetOffset;
-
-      unsigned Offset = Fixup.getOffset();
-      assert(Offset + NumBytes <= DataSize && "Invalid fixup offset!");
-
-      // For each byte of the fragment that the fixup touches, mask in the
-      // bits from the fixup value.
-      for (unsigned i = 0; i != NumBytes; ++i)
-        Data[Offset + i] |= uint8_t((Value >> (i * 8)) & 0xff);
-    }
+    return BrImm;
   }
+  case FK_Data_1:
+  case FK_Data_2:
+  case FK_Data_4:
+  case FK_Data_8:
+  case FK_PCRel_4:
+  case FK_SecRel_4:
+    return Value;
+  default:
+    llvm_unreachable("unhandled fixup kind");
+  }
+}
+
+void AMDGPUAsmBackend::applyFixup(const MCAssembler &Asm, const MCFixup &Fixup,
+                                  const MCValue &Target,
+                                  MutableArrayRef<char> Data, uint64_t Value,
+                                  bool IsResolved,
+                                  const MCSubtargetInfo *STI) const {
+  Value = adjustFixupValue(Fixup, Value, &Asm.getContext());
+  if (!Value)
+    return; // Doesn't change encoding.
+
+  MCFixupKindInfo Info = getFixupKindInfo(Fixup.getKind());
+
+  // Shift the value into position.
+  Value <<= Info.TargetOffset;
+
+  unsigned NumBytes = getFixupKindNumBytes(Fixup.getKind());
+  uint32_t Offset = Fixup.getOffset();
+  assert(Offset + NumBytes <= Data.size() && "Invalid fixup offset!");
+
+  // For each byte of the fragment that the fixup touches, mask in the bits from
+  // the fixup value.
+  for (unsigned i = 0; i != NumBytes; ++i)
+    Data[Offset + i] |= static_cast<uint8_t>((Value >> (i * 8)) & 0xff);
 }
 
 const MCFixupKindInfo &AMDGPUAsmBackend::getFixupKindInfo(
@@ -136,8 +159,6 @@ const MCFixupKindInfo &AMDGPUAsmBackend::getFixupKindInfo(
   const static MCFixupKindInfo Infos[AMDGPU::NumTargetFixupKinds] = {
     // name                   offset bits  flags
     { "fixup_si_sopp_br",     0,     16,   MCFixupKindInfo::FKF_IsPCRel },
-    { "fixup_si_rodata",      0,     32,   0 },
-    { "fixup_si_end_of_text", 0,     32,   MCFixupKindInfo::FKF_IsPCRel }
   };
 
   if (Kind < FirstTargetFixupKind)
@@ -146,8 +167,25 @@ const MCFixupKindInfo &AMDGPUAsmBackend::getFixupKindInfo(
   return Infos[Kind - FirstTargetFixupKind];
 }
 
-bool AMDGPUAsmBackend::writeNopData(uint64_t Count, MCObjectWriter *OW) const {
-  OW->WriteZeros(Count);
+unsigned AMDGPUAsmBackend::getMinimumNopSize() const {
+  return 4;
+}
+
+bool AMDGPUAsmBackend::writeNopData(raw_ostream &OS, uint64_t Count) const {
+  // If the count is not 4-byte aligned, we must be writing data into the text
+  // section (otherwise we have unaligned instructions, and thus have far
+  // bigger problems), so just write zeros instead.
+  OS.write_zeros(Count % 4);
+
+  // We are properly aligned, so write NOPs as requested.
+  Count /= 4;
+
+  // FIXME: R600 support.
+  // s_nop 0
+  const uint32_t Encoded_S_NOP_0 = 0xbf800000;
+
+  for (uint64_t I = 0; I != Count; ++I)
+    support::endian::write<uint32_t>(OS, Encoded_S_NOP_0, Endian);
 
   return true;
 }
@@ -160,23 +198,44 @@ namespace {
 
 class ELFAMDGPUAsmBackend : public AMDGPUAsmBackend {
   bool Is64Bit;
+  bool HasRelocationAddend;
+  uint8_t OSABI = ELF::ELFOSABI_NONE;
+  uint8_t ABIVersion = 0;
 
 public:
-  ELFAMDGPUAsmBackend(const Target &T, bool Is64Bit) :
-      AMDGPUAsmBackend(T), Is64Bit(Is64Bit) { }
+  ELFAMDGPUAsmBackend(const Target &T, const Triple &TT, uint8_t ABIVersion) :
+      AMDGPUAsmBackend(T), Is64Bit(TT.getArch() == Triple::amdgcn),
+      HasRelocationAddend(TT.getOS() == Triple::AMDHSA),
+      ABIVersion(ABIVersion) {
+    switch (TT.getOS()) {
+    case Triple::AMDHSA:
+      OSABI = ELF::ELFOSABI_AMDGPU_HSA;
+      break;
+    case Triple::AMDPAL:
+      OSABI = ELF::ELFOSABI_AMDGPU_PAL;
+      break;
+    case Triple::Mesa3D:
+      OSABI = ELF::ELFOSABI_AMDGPU_MESA3D;
+      break;
+    default:
+      break;
+    }
+  }
 
-  MCObjectWriter *createObjectWriter(raw_pwrite_stream &OS) const override {
-    return createAMDGPUELFObjectWriter(Is64Bit, OS);
+  std::unique_ptr<MCObjectTargetWriter>
+  createObjectTargetWriter() const override {
+    return createAMDGPUELFObjectWriter(Is64Bit, OSABI, HasRelocationAddend,
+                                       ABIVersion);
   }
 };
 
 } // end anonymous namespace
 
 MCAsmBackend *llvm::createAMDGPUAsmBackend(const Target &T,
+                                           const MCSubtargetInfo &STI,
                                            const MCRegisterInfo &MRI,
-                                           const Triple &TT, StringRef CPU) {
-  Triple TargetTriple(TT);
-
+                                           const MCTargetOptions &Options) {
   // Use 64-bit ELF for amdgcn
-  return new ELFAMDGPUAsmBackend(T, TargetTriple.getArch() == Triple::amdgcn);
+  return new ELFAMDGPUAsmBackend(T, STI.getTargetTriple(),
+                                 IsaInfo::hasCodeObjectV3(&STI) ? 1 : 0);
 }

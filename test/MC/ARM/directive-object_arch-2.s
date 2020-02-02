@@ -1,5 +1,5 @@
 @ RUN: llvm-mc -triple armv7-eabi -filetype obj -o - %s \
-@ RUN:   | llvm-readobj -arm-attributes | FileCheck %s
+@ RUN:   | llvm-readobj --arch-specific | FileCheck %s
 
 	.syntax unified
 
@@ -14,7 +14,7 @@
 @ CHECK:   }
 @ CHECK:   Attribute {
 @ CHECK:     Tag: 6
-@ CHEKC:     Value: 1
+@ CHECK:     Value: 1
 @ CHECK:     TagName: CPU_arch
 @ CHECK:     Description: ARM v4
 @ CHECK:   }
